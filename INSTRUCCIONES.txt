@@ -1,0 +1,53 @@
+========================================
+  AUTOMATIZACIÓN DIDI - INSTRUCCIONES
+========================================
+
+🎯 OBJETIVO:
+   Automatizar navegación en el dashboard de Didi sin tener que hacer login cada vez
+   (evita códigos de verificación 2FA)
+
+
+📋 CONFIGURACIÓN INICIAL (Solo UNA vez):
+
+   1. Cierra TODAS las ventanas de Chrome que tengas abiertas
+
+   2. Doble click en: abrir_chrome_debug.bat
+      → Se abrirá Chrome con debugging habilitado
+
+   3. En ese Chrome:
+      - Navega a: https://pixiu-prod.didiglobal.com/global-fintech/creditcard/mx/global-pixiu-api/home#/index
+      - Haz login manualmente (con tu 2FA)
+      - Navega al dashboard
+
+   4. IMPORTANTE: DEJA ESE CHROME ABIERTO (no lo cierres)
+
+
+🚀 USO NORMAL (Día a día):
+
+   1. Asegúrate de tener Chrome debug abierto (del paso anterior)
+      → Si lo cerraste, vuelve a ejecutar abrir_chrome_debug.bat y loguéate
+
+   2. Ejecuta el script:
+      python Didi.py
+
+   3. El script se conectará a tu Chrome y hará la automatización
+      → YA NO pedirá login porque usará tu sesión activa
+
+
+💡 VENTAJAS:
+   ✅ Login UNA SOLA VEZ
+   ✅ No más códigos de verificación cada vez
+   ✅ El Chrome permanece abierto con tu sesión
+   ✅ Ejecutas el script cuando quieras
+
+
+⚠️ IMPORTANTE:
+   - Siempre usa el Chrome que abre abrir_chrome_debug.bat
+   - No cierres ese Chrome si quieres evitar el login
+   - Si lo cierras, solo vuelve a ejecutar el .bat y te logueas una vez más
+
+
+🔧 ARCHIVOS:
+   - abrir_chrome_debug.bat  → Abre Chrome con debugging
+   - Didi.py                 → Script de automatización
+   - ChromeProfile/          → Carpeta donde se guardan las sesiones

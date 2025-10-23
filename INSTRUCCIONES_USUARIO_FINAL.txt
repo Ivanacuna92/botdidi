@@ -1,0 +1,238 @@
+════════════════════════════════════════════════════════════════
+    BOT DIDI - INSTRUCCIONES PARA USUARIO FINAL
+    (Versión Ejecutable - NO requiere Python)
+════════════════════════════════════════════════════════════════
+
+✨ VENTAJA: Esta versión NO requiere instalar Python ni programas
+   adicionales. Todo está listo para usarse directamente.
+
+
+📦 INSTALACIÓN (Solo la primera vez - 2 minutos)
+════════════════════════════════════════════════════════════════
+
+1. Extrae TODOS los archivos en una carpeta
+   Ejemplo: C:\BotDidi
+
+2. Doble clic en: INSTALAR.bat
+   → Verifica que Chrome esté instalado
+   → Verifica conexión a base de datos
+   → ¡Listo en 10 segundos!
+
+3. ¡Ya está instalado! NO necesitas instalar nada más
+
+
+🚀 USO DIARIO (3 pasos sencillos)
+════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────┐
+│ PASO 1: Abrir Chrome especial (SOLO LA PRIMERA VEZ)        │
+└─────────────────────────────────────────────────────────────┘
+
+   a) Cierra TODAS las ventanas de Chrome que tengas abiertas
+   b) Doble clic en: abrir_chrome_debug.bat
+   c) Se abrirá un Chrome especial
+   d) Ve al dashboard de Didi y loguéate (con tu 2FA)
+   e) DEJA ESE CHROME ABIERTO siempre
+
+   ⚠️ IMPORTANTE: Solo necesitas hacer este paso UNA VEZ
+      Después, siempre deja ese Chrome abierto
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ PASO 2: Ejecutar el bot                                     │
+└─────────────────────────────────────────────────────────────┘
+
+   a) Asegúrate que el Chrome especial esté abierto
+   b) Doble clic en: INICIAR_BOT.bat
+   c) Confirma con "S" para iniciar
+   d) El bot procesará automáticamente los clientes
+   e) Verás el progreso en la ventana
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ PASO 3: Ver resultados                                      │
+└─────────────────────────────────────────────────────────────┘
+
+   a) Doble clic en: VER_ESTADISTICAS.bat
+   b) Selecciona qué quieres ver:
+      [1] Clientes de hoy
+      [2] Últimos 7 días
+      [3] Últimos 30 días
+      [4] Todos los datos
+
+
+💡 VENTAJAS DE ESTA VERSIÓN
+════════════════════════════════════════════════════════════════
+✓ NO necesitas instalar Python
+✓ NO necesitas saber de programación
+✓ Login UNA SOLA VEZ (sin 2FA cada vez)
+✓ Ejecución simple con doble clic
+✓ Guarda automáticamente las estadísticas
+✓ Todo está incluido en una carpeta
+
+
+⚠️ IMPORTANTE - LEE ESTO
+════════════════════════════════════════════════════════════════
+
+SOBRE EL CHROME ESPECIAL:
+   - Siempre usa el Chrome que abre "abrir_chrome_debug.bat"
+   - NO cierres ese Chrome si no quieres volver a hacer login
+   - Puedes usar Chrome normal para otras cosas sin problema
+   - Si lo cierras por error, solo ejecuta de nuevo
+     abrir_chrome_debug.bat y vuelve a loguearte
+
+DURANTE LA EJECUCIÓN:
+   - El bot puede tardar según cuántos clientes haya
+   - NO cierres la ventana mientras está trabajando
+   - Puedes ver el progreso en tiempo real
+   - Los datos se guardan automáticamente al terminar
+
+SI NECESITAS DETENER EL BOT:
+   - Presiona Ctrl+C en la ventana del bot
+   - El sistema guardará automáticamente lo procesado
+   - Después puedes cerrar la ventana
+
+
+🛑 CÓMO DETENER EL BOT
+════════════════════════════════════════════════════════════════
+
+1. Presiona Ctrl+C en la ventana del bot
+2. Espera a que diga "Guardando X clientes..."
+3. Verás "Clientes guardados exitosamente"
+4. Ya puedes cerrar la ventana
+
+✓ Los datos se guardan automáticamente, no te preocupes
+
+
+📊 ARCHIVOS EN LA CARPETA
+════════════════════════════════════════════════════════════════
+
+Para el usuario (doble clic):
+  INSTALAR.bat             → Ejecutar PRIMERO (solo una vez)
+  INICIAR_BOT.bat          → Ejecutar para usar el bot
+  abrir_chrome_debug.bat   → Abrir Chrome especial
+  VER_ESTADISTICAS.bat     → Ver resultados
+
+Archivos del sistema (NO tocar):
+  Didi.exe                 → Bot principal
+  backend_conteo.exe       → Sistema de estadísticas
+  ver_datos.exe            → Visor de datos
+  test_conexion.exe        → Verificador
+  ChromeProfile/           → Datos de Chrome
+
+
+❓ PREGUNTAS FRECUENTES
+════════════════════════════════════════════════════════════════
+
+P: ¿Necesito instalar Python?
+R: NO. Esta versión no requiere Python ni nada adicional.
+
+P: ¿Puedo usar Chrome normal mientras el bot corre?
+R: Sí, el Chrome especial es independiente. Puedes usar Chrome
+   normal para otras cosas sin problema.
+
+P: ¿Qué pasa si cierro el bot a la mitad?
+R: Presiona Ctrl+C y espera. Los datos se guardarán
+   automáticamente. NO cierres la ventana directamente.
+
+P: ¿Se me fue la luz, qué hago?
+R: Solo ejecuta de nuevo INICIAR_BOT.bat. Los datos del día
+   se acumulan automáticamente.
+
+P: ¿Cómo sé cuántos clientes procesé?
+R: Ejecuta VER_ESTADISTICAS.bat en cualquier momento.
+
+P: ¿Dónde se guardan los datos?
+R: En una base de datos en la nube segura (DidiMonitoreo).
+   Los datos están respaldados automáticamente.
+
+P: Error: "No se pudo conectar a Chrome"
+R: Asegúrate de ejecutar primero abrir_chrome_debug.bat y
+   déjalo abierto con tu sesión de Didi activa.
+
+P: El bot no encuentra registros
+R: Verifica que estés en la página correcta de "Mis casos"
+   en el dashboard de Didi.
+
+P: ¿Puedo ejecutar el bot varias veces al día?
+R: Sí, cada ejecución suma clientes al contador del día.
+
+P: ¿Necesito internet?
+R: Sí, para conectarte a Didi y para guardar las estadísticas.
+
+
+🔒 SEGURIDAD Y PRIVACIDAD
+════════════════════════════════════════════════════════════════
+
+¿Qué datos guarda el bot?
+→ Solo la fecha y la cantidad de clientes procesados
+→ NO guarda nombres, teléfonos ni datos personales
+→ NO guarda tu contraseña de Didi
+
+¿Dónde están mis datos?
+→ En una base de datos segura en la nube
+→ Con respaldos automáticos
+
+¿Es seguro?
+→ Sí, usa tu sesión existente de Chrome
+→ No almacena contraseñas
+→ Solo personal autorizado tiene acceso a las estadísticas
+
+
+⚙️ REQUISITOS MÍNIMOS
+════════════════════════════════════════════════════════════════
+
+Hardware:
+  • PC con Windows 10 u 11
+  • 4 GB de RAM mínimo
+  • 500 MB de espacio en disco
+
+Software:
+  • Google Chrome (cualquier versión reciente)
+  • Conexión a internet
+
+Accesos:
+  • Cuenta activa en Didi
+  • Acceso al dashboard de cobranza
+  • 2FA configurado (para el login inicial)
+
+
+🆘 PROBLEMAS COMUNES Y SOLUCIONES
+════════════════════════════════════════════════════════════════
+
+Problema: "Chrome no encontrado"
+Solución: Instala Google Chrome desde:
+          https://www.google.com/chrome/
+
+Problema: "No se pudo conectar a Chrome"
+Solución: 1. Cierra TODOS los Chrome
+          2. Ejecuta abrir_chrome_debug.bat
+          3. Loguéate en Didi
+          4. Vuelve a ejecutar INICIAR_BOT.bat
+
+Problema: "El backend no responde"
+Solución: Cierra el bot (Ctrl+C) y vuelve a ejecutar
+          INICIAR_BOT.bat (reinicia el backend automáticamente)
+
+Problema: "No guarda los datos"
+Solución: Verifica tu conexión a internet. Los datos se
+          guardan en la nube y necesitas internet.
+
+Problema: El bot se queda atascado
+Solución: Presiona Ctrl+C para detenerlo, verifica que
+          estés en la página correcta y vuelve a intentar
+
+
+📞 SOPORTE
+════════════════════════════════════════════════════════════════
+
+Si tienes problemas que no puedes resolver:
+  1. Revisa esta guía completa
+  2. Verifica que seguiste todos los pasos
+  3. Contacta al administrador del sistema
+
+
+════════════════════════════════════════════════════════════════
+Versión 1.0 (Ejecutable) - Sistema de Monitoreo Automático
+No requiere instalación de Python ni programas adicionales
+════════════════════════════════════════════════════════════════
