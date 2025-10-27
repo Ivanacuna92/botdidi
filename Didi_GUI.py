@@ -32,8 +32,8 @@ CHROME_PROFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DidiP
 DB_CONFIG = {
     'host': 'datenbanken.aloia.dev',
     'port': 3306,
-    'user': 'aloiaMariaDB',
-    'password': 'aloiaMariaDB-17.59*2025!',
+    'user': 'aloiadidibot',
+    'password': 'aloia2025didi!',
     'database': 'DidiMonitoreo',
     'charset': 'utf8mb4'
 }
@@ -136,6 +136,42 @@ def iniciar_backend():
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
+    @flask_app.route('/clientes_hoy', methods=['GET'])
+    def clientes_hoy():
+        try:
+            conn = pymysql.connect(**DB_CONFIG)
+            cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+            fecha_hoy = datetime.now().strftime('%Y-%m-%d')
+
+            # Obtener todos los clientes procesados hoy
+            cursor.execute("""
+                SELECT id, nombre_cliente, estado, fecha_procesado
+                FROM bot_clientes_procesados
+                WHERE DATE(fecha_procesado) = %s
+                ORDER BY fecha_procesado DESC
+            """, (fecha_hoy,))
+
+            clientes = cursor.fetchall()
+
+            # Contar totales
+            total = len(clientes)
+            exitosos = sum(1 for c in clientes if c['estado'] == 'exitoso')
+            errores = sum(1 for c in clientes if c['estado'] == 'error')
+
+            cursor.close()
+            conn.close()
+
+            return jsonify({
+                'status': 'ok',
+                'clientes': clientes,
+                'total': total,
+                'exitosos': exitosos,
+                'errores': errores
+            }), 200
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     # Ejecutar Flask sin logs molestos
     import logging
     log = logging.getLogger('werkzeug')
@@ -213,16 +249,27 @@ def conectar_a_chrome():
             driver = webdriver.Chrome(options=chrome_options)
             log_queue.put("[OK] Conectado a Chrome exitosamente")
 
-            # Cambiar a la última pestaña activa (la que el usuario tiene visible)
+            # Buscar una pestana valida
             try:
                 handles = driver.window_handles
-                if len(handles) > 0:
-                    # Cambiar a la última pestaña (la más reciente/activa)
-                    driver.switch_to.window(handles[-1])
-                    log_queue.put(f"[DEBUG] Cambiado a pestaña activa ({len(handles)} pestañas abiertas)")
-                    time.sleep(1)  # Dar tiempo para que cargue el contexto
+                log_queue.put(f"[DEBUG] Encontradas {len(handles)} pestanas")
+
+                pestana_valida = False
+                for i, handle in enumerate(handles):
+                    try:
+                        driver.switch_to.window(handle)
+                        _ = driver.current_url  # Test de contexto
+                        log_queue.put(f"[OK] Usando pestana {i+1} (valida)")
+                        pestana_valida = True
+                        break
+                    except:
+                        continue
+
+                if not pestana_valida:
+                    log_queue.put("[!] Ninguna pestana valida, se navegara al dashboard automaticamente")
+
             except Exception as e:
-                log_queue.put(f"[!] Advertencia al cambiar pestaña: {e}")
+                log_queue.put(f"[!] Advertencia al verificar pestanas: {str(e)}")
 
             return driver
         except:
@@ -238,16 +285,62 @@ def verificar_sesion_didi(driver):
         url_esperada = "https://pixiu-prod.didiglobal.com/global-fintech/creditcard/mx/global-pixiu-api/home#/index"
 
         # Intentar obtener URL actual
+        url_actual = None
         try:
             url_actual = driver.current_url
             log_queue.put(f"[DEBUG] URL actual: {url_actual}")
-        except:
-            # Si falla, navegar directamente al dashboard
-            log_queue.put("[!] Contexto inválido, navegando al dashboard...")
-            driver.get(url_esperada)
-            time.sleep(5)  # Esperar a que cargue
-            url_actual = driver.current_url
-            log_queue.put(f"[DEBUG] URL después de navegar: {url_actual}")
+        except Exception as e:
+            error_msg = str(e).lower()
+
+            # Si es error de contexto, intentar recuperar
+            if "execution context" in error_msg or "no such window" in error_msg or "frame" in error_msg:
+                log_queue.put("[!] Contexto de pestana perdido, intentando recuperar...")
+
+                # ESTRATEGIA 1: Intentar cambiar a todas las pestanas hasta encontrar una valida
+                try:
+                    log_queue.put("[*] Buscando pestana valida...")
+                    handles = driver.window_handles
+                    log_queue.put(f"[DEBUG] Encontradas {len(handles)} pestanas")
+
+                    for i, handle in enumerate(handles):
+                        try:
+                            driver.switch_to.window(handle)
+                            test_url = driver.current_url  # Test si esta pestana funciona
+                            log_queue.put(f"[OK] Pestana {i+1} es valida, usando esta")
+                            url_actual = test_url
+                            break
+                        except:
+                            log_queue.put(f"[!] Pestana {i+1} invalida, probando siguiente...")
+                            continue
+                except Exception as e2:
+                    log_queue.put(f"[!] No se pudo cambiar de pestana: {str(e2)}")
+
+                # ESTRATEGIA 2: Si ninguna pestana funciona, navegar directamente
+                if url_actual is None:
+                    log_queue.put("[*] Todas las pestanas invalidas, navegando directamente...")
+                    try:
+                        driver.get(url_esperada)
+                        time.sleep(5)
+                        url_actual = driver.current_url
+                        log_queue.put(f"[OK] Navegacion directa exitosa: {url_actual}")
+                    except Exception as e3:
+                        log_queue.put(f"[ERROR] No se pudo recuperar contexto: {str(e3)}")
+                        return False
+            else:
+                # Otro tipo de error, intentar navegar directamente
+                log_queue.put("[!] Error obteniendo URL, navegando al dashboard...")
+                try:
+                    driver.get(url_esperada)
+                    time.sleep(5)
+                    url_actual = driver.current_url
+                    log_queue.put(f"[DEBUG] URL despues de navegar: {url_actual}")
+                except:
+                    return False
+
+        # Si todavia no tenemos URL, fallar
+        if url_actual is None:
+            log_queue.put("[ERROR] No se pudo obtener URL valida")
+            return False
 
         # Verificar URL
         if url_esperada not in url_actual and "/home#/index" not in url_actual:
@@ -294,34 +387,6 @@ def procesar_registro(driver, indice_registro):
 
         boton_detalles = botones_detalles[indice_registro]
 
-        # Capturar el nombre del cliente antes de hacer click
-        try:
-            fila = boton_detalles.find_element(By.XPATH, "./ancestor::tr")
-            # Intentar diferentes estrategias para encontrar el nombre
-            nombre_cliente = "DESCONOCIDO"
-
-            # Estrategia 1: Buscar directamente la columna 4
-            try:
-                col4 = fila.find_element(By.XPATH, ".//td[contains(@class, 'el-table_1_column_4')]//div[@class='cell']")
-                nombre_cliente = col4.text.strip()
-            except:
-                pass
-
-            # Estrategia 2: Si no funcionó, buscar cualquier celda con formato de nombre (con comas)
-            if nombre_cliente == "DESCONOCIDO":
-                columnas = fila.find_elements(By.XPATH, ".//td[contains(@class, 'is-center')]//div[@class='cell']")
-                for col in columnas:
-                    texto = col.text.strip()
-                    # Los nombres tienen formato: NOMBRE,APELLIDO1,APELLIDO2
-                    if texto and texto.count(',') >= 2:
-                        nombre_cliente = texto
-                        break
-
-            log_queue.put(f"[OK] Cliente: {nombre_cliente}")
-        except Exception as e:
-            nombre_cliente = "DESCONOCIDO"
-            log_queue.put(f"[!] Error al capturar nombre: {str(e)}")
-
         driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_detalles)
         time.sleep(0.5)
 
@@ -335,7 +400,29 @@ def procesar_registro(driver, indice_registro):
         # Verificar si se debe detener
         if detener_bot:
             log_queue.put("[!] Bot detenido por el usuario")
+            return False, "DESCONOCIDO"
+
+        # Capturar el nombre del cliente desde la vista de detalles
+        nombre_cliente = "DESCONOCIDO"
+        try:
+            log_queue.put("[*] Capturando nombre del cliente desde vista de detalles...")
+            # Buscar el contenedor que tiene la etiqueta "Nombre"
+            elemento_nombre = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Nombre')]/following-sibling::span[@class='el-descriptions-item__content']"))
+            )
+            nombre_cliente = elemento_nombre.text.strip()
+            log_queue.put(f"[OK] ✓ Cliente capturado: {nombre_cliente}")
+        except Exception as e:
+            log_queue.put(f"[ERROR] No se pudo capturar nombre desde detalles: {str(e)}")
+            log_queue.put(f"[!] Se usará 'DESCONOCIDO' como nombre")
+            nombre_cliente = "DESCONOCIDO"
+
+        # Verificar si se debe detener
+        if detener_bot:
+            log_queue.put("[!] Bot detenido por el usuario")
             return False, nombre_cliente
+
+        log_queue.put(f"[*] Continuando con cliente: {nombre_cliente}")
 
         # WhatsApp
         boton_whatsapp = WebDriverWait(driver, 10).until(
@@ -571,14 +658,45 @@ def ejecutar_bot():
         driver = conectar_a_chrome()
         driver_global = driver
 
-        # 4. Verificar sesión y URL
-        if not verificar_sesion_didi(driver):
+        # 4. Verificar sesión y URL con espera inteligente
+        log_queue.put("[*] Verificando sesión...")
+        sesion_valida = verificar_sesion_didi(driver)
+
+        if not sesion_valida:
+            log_queue.put("[!] No se detectó sesión activa")
+            log_queue.put("[*] Esperando a que te loguees en Chrome...")
+            log_queue.put("[*] Tienes 5 minutos para completar el login")
             log_queue.put("[!] ACCIÓN REQUERIDA:")
-            log_queue.put("[!] 1. Ve a Chrome y loguéate en Didi")
-            log_queue.put("[!] 2. Navega a la página principal (Dashboard)")
-            log_queue.put("[!] 3. Presiona INICIAR nuevamente cuando estés listo")
-            bot_corriendo = False
-            return
+            log_queue.put("[!] 1. Ve a la ventana de Chrome")
+            log_queue.put("[!] 2. Completa el login en Didi")
+            log_queue.put("[!] 3. El bot detectará automáticamente cuando termines")
+
+            # Loop de espera: 30 intentos × 10 segundos = 5 minutos
+            intentos_maximos = 30
+            for intento in range(intentos_maximos):
+                if detener_bot:
+                    log_queue.put("[!] Espera de login cancelada por el usuario")
+                    bot_corriendo = False
+                    return
+
+                time.sleep(10)  # Esperar 10 segundos entre intentos
+
+                tiempo_restante = (intentos_maximos - intento - 1) * 10
+                minutos = tiempo_restante // 60
+                segundos = tiempo_restante % 60
+
+                log_queue.put(f"[*] Verificando login... (Intento {intento + 1}/{intentos_maximos} - Quedan {minutos}m {segundos}s)")
+
+                if verificar_sesion_didi(driver):
+                    log_queue.put("[OK] ✓ Login detectado exitosamente!")
+                    sesion_valida = True
+                    break
+
+            if not sesion_valida:
+                log_queue.put("[ERROR] Tiempo agotado esperando login (5 minutos)")
+                log_queue.put("[!] Por favor loguéate manualmente y presiona INICIAR nuevamente")
+                bot_corriendo = False
+                return
 
         # 5. Navegar
         navegar_a_mis_casos(driver)
