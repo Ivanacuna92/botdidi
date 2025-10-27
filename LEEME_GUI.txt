@@ -1,0 +1,178 @@
+====================================================================
+    🤖 BOT DIDI - VERSION CON INTERFAZ GRÁFICA (A PRUEBA DE TONTOS)
+====================================================================
+
+Esta versión tiene TODO integrado en UN SOLO PROGRAMA con interfaz bonita.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 INSTALACIÓN (SOLO UNA VEZ)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Abre la terminal (CMD) en esta carpeta
+   (Click derecho en la carpeta → "Abrir terminal aquí")
+
+2. Ejecuta:
+   pip install -r requirements.txt
+
+3. ¡Listo! Ya está instalado
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 CÓMO USAR (CADA VEZ QUE QUIERAS USAR EL BOT)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FORMA 1: Doble click en el archivo
+   📁 EJECUTAR_BOT_GUI.bat
+
+FORMA 2: Desde la terminal
+   python Didi_GUI.py
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 QUÉ HACE EL BOT AUTOMÁTICAMENTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Inicia el backend automáticamente
+✅ Cierra Chrome previo (si existe)
+✅ Abre Chrome con tu perfil guardado
+✅ Se conecta automáticamente
+✅ Verifica si estás logueado en Didi
+✅ Si NO estás logueado → Te avisa para que te loguees
+✅ Si SÍ estás logueado → Procesa todo automáticamente
+✅ Guarda las estadísticas en la base de datos
+✅ Muestra progreso en tiempo real
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖥️ USO DE LA INTERFAZ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La ventana muestra:
+
+┌─────────────────────────────────────────────┐
+│  🤖 BOT DIDI                                │
+│                                             │
+│  Estado: ● LISTO / ● PROCESANDO            │
+│                                             │
+│  [ ▶ INICIAR BOT ]  [ ⬛ DETENER ]         │
+│                                             │
+│  📊 Estadísticas:                          │
+│  - Clientes procesados: 0                  │
+│  - Exitosos: 0                             │
+│  - Errores: 0                              │
+│  - Página actual: 0                        │
+│                                             │
+│  📝 Log:                                    │
+│  [OK] Backend iniciado...                  │
+│  [OK] Chrome abierto...                    │
+│  [*] Procesando registro #1...             │
+│                                             │
+│  [Ver Estadísticas Completas]              │
+└─────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚡ PASOS SIMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Doble click en EJECUTAR_BOT_GUI.bat
+   → Se abre la ventana del bot
+
+2. Si es la PRIMERA VEZ:
+   → Se abre Chrome automáticamente
+   → Ve a la ventana de Chrome
+   → Loguéate en Didi manualmente (con 2FA si es necesario)
+   → Vuelve a la ventana del bot
+   → Click en "INICIAR BOT" otra vez
+
+3. Si YA ESTÁS LOGUEADO:
+   → Click en "▶ INICIAR BOT"
+   → ¡El bot hace TODO solo!
+
+4. Para detener en cualquier momento:
+   → Click en "⬛ DETENER"
+
+5. Para ver estadísticas históricas:
+   → Click en "Ver Estadísticas Completas"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 VENTAJAS DE ESTA VERSIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ NO necesitas abrir Chrome manualmente
+✅ NO necesitas ejecutar backend_conteo.py
+✅ NO necesitas abrir múltiples terminales
+✅ NO necesitas saber comandos
+✅ TODO está en UN SOLO PROGRAMA
+✅ Interfaz visual con progreso en tiempo real
+✅ Botón para detener en cualquier momento
+✅ Estadísticas visibles instantáneamente
+✅ Gestión automática de Chrome
+✅ El perfil de Chrome se guarda (no hay que loguearse cada vez)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❓ PREGUNTAS FRECUENTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+P: ¿Tengo que dejar Chrome abierto?
+R: NO. El bot abre Chrome automáticamente cuando lo necesita.
+
+P: ¿Tengo que loguearse cada vez en Didi?
+R: NO. Solo la primera vez. Después el perfil se guarda.
+
+P: ¿Qué pasa si cierro Chrome accidentalmente?
+R: Nada. Solo vuelve a ejecutar el bot y él abrirá Chrome de nuevo.
+
+P: ¿Puedo usar Chrome para otras cosas mientras el bot corre?
+R: NO. El bot necesita control exclusivo de Chrome.
+   Abre otro navegador (Edge, Firefox) para navegar.
+
+P: ¿El bot guarda automáticamente las estadísticas?
+R: SÍ. Al terminar (normal o con DETENER), guarda todo en la BD.
+
+P: ¿Puedo ver cuántos clientes he procesado en días anteriores?
+R: SÍ. Click en "Ver Estadísticas Completas" en la ventana.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ SOLUCIÓN DE PROBLEMAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. "No se pudo conectar a Chrome"
+   → Cierra TODAS las ventanas de Chrome
+   → Vuelve a ejecutar el bot
+
+2. "Backend no disponible"
+   → El backend se inicia automáticamente
+   → Espera 5 segundos y vuelve a intentar
+
+3. "No se encontró el botón X"
+   → Verifica que estés en la página correcta de Didi
+   → Didi pudo haber cambiado su interfaz
+   → Contacta al desarrollador
+
+4. El log dice "ACCIÓN REQUERIDA: Loguéate"
+   → Ve a la ventana de Chrome
+   → Loguéate en Didi
+   → Vuelve al bot y click en INICIAR otra vez
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📞 SOPORTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Si tienes problemas, envía el contenido del LOG que aparece
+en la ventana del bot al desarrollador.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎉 ¡DISFRUTA DEL BOT!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Ya no tienes que hacer nada manualmente.
+Solo click en INICIAR y el bot hace todo el trabajo.
+
+¡Que lo disfrutes! 🚀

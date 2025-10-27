@@ -27,8 +27,10 @@ def inicio():
         'status': 'OK',
         'endpoints': {
             'POST /registrar': 'Registrar clientes procesados (body: {"clientes": numero})',
+            'POST /registrar_cliente': 'Registrar cliente individual (body: {"nombre": "...", "estado": "exitoso|error"})',
             'GET /estadisticas': 'Obtener estadísticas',
-            'GET /hoy': 'Obtener clientes procesados hoy'
+            'GET /hoy': 'Obtener clientes procesados hoy',
+            'GET /clientes_hoy': 'Obtener lista de clientes procesados hoy'
         }
     })
 
@@ -60,6 +62,39 @@ def registrar_clientes():
         return jsonify({
             'success': True,
             'message': f'{clientes} clientes registrados para hoy'
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/registrar_cliente', methods=['POST'])
+def registrar_cliente_individual():
+    """Registra un cliente procesado individualmente con su nombre"""
+    data = request.json
+
+    if not data or 'nombre' not in data:
+        return jsonify({'error': 'Falta parámetro: nombre'}), 400
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        sql = """
+            INSERT INTO bot_clientes_procesados (nombre_cliente, estado)
+            VALUES (%s, %s)
+        """
+
+        nombre = data['nombre']
+        estado = data.get('estado', 'exitoso')  # Por defecto 'exitoso'
+        cursor.execute(sql, (nombre, estado))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': f'Cliente {nombre} registrado como {estado}'
         })
 
     except Exception as e:
@@ -117,6 +152,39 @@ def obtener_estadisticas():
             'total_clientes': total_clientes,
             'promedio_diario': round(promedio, 2),
             'dias_analizados': len(resultado)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/clientes_hoy', methods=['GET'])
+def obtener_clientes_hoy():
+    """Obtiene la lista de clientes procesados hoy"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+        sql = """
+            SELECT id, nombre_cliente, estado, fecha_procesado
+            FROM bot_clientes_procesados
+            WHERE DATE(fecha_procesado) = CURDATE()
+            ORDER BY fecha_procesado DESC
+        """
+        cursor.execute(sql)
+        clientes = cursor.fetchall()
+
+        # Contar por estado
+        exitosos = sum(1 for c in clientes if c['estado'] == 'exitoso')
+        errores = sum(1 for c in clientes if c['estado'] == 'error')
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            'clientes': clientes,
+            'total': len(clientes),
+            'exitosos': exitosos,
+            'errores': errores
         })
 
     except Exception as e:

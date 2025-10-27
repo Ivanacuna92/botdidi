@@ -10,9 +10,8 @@ import requests
 import signal
 import atexit
 
-# Variable global para trackear clientes procesados
+# Variable global para trackear clientes procesados (solo para estadísticas en pantalla)
 clientes_exitosos_global = 0
-guardado_realizado = False  # Flag para evitar guardado duplicado
 
 # Configurar UTF-8 para la consola de Windows (para soportar emojis)
 if sys.platform == 'win32':
@@ -20,30 +19,6 @@ if sys.platform == 'win32':
         sys.stdout.reconfigure(encoding='utf-8')
     except:
         pass
-
-def guardar_al_salir():
-    """Se ejecuta cuando el script termina (normal o con Ctrl+C)"""
-    global clientes_exitosos_global, guardado_realizado
-
-    if guardado_realizado:
-        return  # Ya se guardó, no hacer nada
-
-    if clientes_exitosos_global > 0:
-        print(f"\n[*] Guardando {clientes_exitosos_global} clientes en la base de datos...")
-        registrar_en_base_datos(clientes_exitosos_global)
-        guardado_realizado = True
-        print(f"[OK] {clientes_exitosos_global} clientes guardados exitosamente")
-
-def signal_handler(sig, frame):
-    """Maneja Ctrl+C para guardar antes de salir"""
-    print('\n\n[!] Interrupción detectada (Ctrl+C)')
-    guardar_al_salir()
-    print('[*] Script terminado')
-    sys.exit(0)
-
-# Registrar handlers
-signal.signal(signal.SIGINT, signal_handler)
-atexit.register(guardar_al_salir)
 
 def procesar_registro(driver, indice_registro):
     """
@@ -67,6 +42,35 @@ def procesar_registro(driver, indice_registro):
             return False
 
         boton_detalles = botones_detalles[indice_registro]
+
+        # Capturar el nombre del cliente antes de hacer click
+        try:
+            # Encontrar la fila (tr) que contiene este botón
+            fila = boton_detalles.find_element(By.XPATH, "./ancestor::tr")
+            # Intentar diferentes estrategias para encontrar el nombre
+            nombre_cliente = "DESCONOCIDO"
+
+            # Estrategia 1: Buscar directamente la columna 4
+            try:
+                col4 = fila.find_element(By.XPATH, ".//td[contains(@class, 'el-table_1_column_4')]//div[@class='cell']")
+                nombre_cliente = col4.text.strip()
+            except:
+                pass
+
+            # Estrategia 2: Si no funcionó, buscar cualquier celda con formato de nombre (con comas)
+            if nombre_cliente == "DESCONOCIDO":
+                columnas = fila.find_elements(By.XPATH, ".//td[contains(@class, 'is-center')]//div[@class='cell']")
+                for col in columnas:
+                    texto = col.text.strip()
+                    # Los nombres tienen formato: NOMBRE,APELLIDO1,APELLIDO2
+                    if texto and texto.count(',') >= 2:
+                        nombre_cliente = texto
+                        break
+
+            print(f"[OK] Cliente: {nombre_cliente}")
+        except Exception as e:
+            nombre_cliente = "DESCONOCIDO"
+            print(f"[!] Error al capturar nombre: {str(e)}")
 
         # Scroll al botón y click
         driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_detalles)
@@ -239,11 +243,12 @@ def procesar_registro(driver, indice_registro):
                 driver.execute_script("arguments[0].click();", link_mis_casos)
             time.sleep(2)
 
-        print(f"\n[OK] REGISTRO #{indice_registro + 1} COMPLETADO")
-        return True
+        print(f"\n[OK] REGISTRO #{indice_registro + 1} COMPLETADO - {nombre_cliente}")
+        return True, nombre_cliente
 
     except Exception as e:
         print(f"\n[ERROR] Error procesando registro #{indice_registro}: {e}")
+        nombre_cliente = locals().get('nombre_cliente', 'DESCONOCIDO')
         import traceback
         traceback.print_exc()
         # Intentar volver a la tabla aunque haya error
@@ -253,8 +258,37 @@ def procesar_registro(driver, indice_registro):
             time.sleep(2)
         except:
             pass
-        return False
+        return False, nombre_cliente
 
+
+def registrar_cliente_individual(nombre_cliente, estado='exitoso'):
+    """
+    Registra un cliente procesado individualmente en la base de datos
+    Y actualiza el contador diario si fue exitoso
+    """
+    try:
+        # Registrar cliente individual
+        response = requests.post('http://localhost:5000/registrar_cliente',
+                                json={'nombre': nombre_cliente, 'estado': estado},
+                                timeout=5)
+
+        if response.status_code != 200:
+            print(f"[!] Error al registrar cliente {nombre_cliente}: {response.text}")
+            return False
+
+        # Si fue exitoso, actualizar contador diario también
+        if estado == 'exitoso':
+            response2 = requests.post('http://localhost:5000/registrar',
+                                     json={'clientes': 1},
+                                     timeout=5)
+            if response2.status_code != 200:
+                print(f"[!] Error al actualizar contador diario: {response2.text}")
+
+        return True
+
+    except Exception as e:
+        print(f"[!] No se pudo registrar cliente {nombre_cliente}: {e}")
+        return False
 
 def registrar_en_base_datos(clientes_procesados):
     """
@@ -303,6 +337,24 @@ def automate_didi_dashboard():
         print("[OK] Conectado a Chrome exitosamente!")
         print("[*] Usando la sesion existente...")
         time.sleep(2)
+
+        # VERIFICAR URL CORRECTA
+        print("\n[*] Verificando URL del dashboard...")
+        url_actual = driver.current_url
+        url_esperada = "https://pixiu-prod.didiglobal.com/global-fintech/creditcard/mx/global-pixiu-api/home#/index"
+
+        if url_esperada not in url_actual and "/home#/index" not in url_actual:
+            print(f"[!] URL incorrecta. Actual: {url_actual}")
+            print(f"[!] Debes estar en: {url_esperada}")
+            print("\n[!] ACCIÓN REQUERIDA:")
+            print("=" * 50)
+            print("1. Ve a Chrome y loguéate en Didi")
+            print("2. Navega a la página principal (Dashboard)")
+            print("3. Vuelve a ejecutar: python Didi.py")
+            print("=" * 50)
+            return
+
+        print("[OK] Dashboard correcto")
 
         # PASO 1: Esperar a que el menú Element UI cargue
         print("\n[*] Paso 1: Esperando carga del menu vertical...")
@@ -407,13 +459,18 @@ def automate_didi_dashboard():
             # Procesar cada registro de la página actual
             for i in range(num_registros):
                 total_procesados += 1
-                exito = procesar_registro(driver, i)
+                exito, nombre_cliente = procesar_registro(driver, i)
+
+                # Registrar cliente individual en la base de datos
                 if exito:
                     total_exitosos += 1
                     clientes_exitosos_global += 1  # Actualizar contador global
+                    registrar_cliente_individual(nombre_cliente, 'exitoso')
                     print(f"[*] Total de clientes exitosos acumulados: {clientes_exitosos_global}")
                 else:
                     total_errores += 1
+                    registrar_cliente_individual(nombre_cliente, 'error')
+                    print(f"[!] Error al procesar cliente: {nombre_cliente}")
 
             # Verificar si hay siguiente página
             print(f"\n[*] Buscando siguiente pagina...")
@@ -450,9 +507,7 @@ def automate_didi_dashboard():
         print(f"   - Con errores: {total_errores}")
         print(f"   - Paginas procesadas: {pagina_actual}")
         print("="*70)
-
-        # El guardado se hace automáticamente al salir (atexit)
-        print(f"\n[*] Los {total_exitosos} clientes se guardarán al cerrar el script...")
+        print(f"\n[*] Todos los clientes fueron guardados en la base de datos en tiempo real")
 
         time.sleep(2)
 

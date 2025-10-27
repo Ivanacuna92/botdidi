@@ -1,0 +1,319 @@
+================================================================================
+                    NUEVA FUNCIONALIDAD: LOGIN AUTOMÁTICO
+                        Bot Didi - Versión con Auto-Login
+================================================================================
+
+FECHA: 2025-10-24
+FUNCIONALIDAD: Login automático con soporte para 2FA dinámico
+
+
+================================================================================
+¿QUÉ SE AGREGÓ?
+================================================================================
+
+1. **Sección de Login Automático en la GUI**
+   - Checkbox para activar/desactivar login automático
+   - Campos para ingresar usuario y contraseña
+   - Opción para guardar credenciales de forma segura (encriptadas)
+   - Botón para eliminar credenciales guardadas
+
+2. **Login Automático con Selenium**
+   - El bot puede loguearse automáticamente en Didi
+   - Ingresa usuario y contraseña sin intervención manual
+   - Detecta si Didi pide o no 2FA
+
+3. **Manejo Inteligente de 2FA**
+   - Si Didi pide 2FA → Aparece ventana modal pidiendo el código
+   - El usuario ingresa el código de 6 dígitos
+   - El bot continúa automáticamente después de ingresar el código
+   - Si Didi NO pide 2FA → El bot continúa directo (más rápido)
+
+4. **Guardado Seguro de Credenciales**
+   - Las credenciales se guardan ENCRIPTADAS en archivo local
+   - Usa encriptación AES256 (cryptography/Fernet)
+   - Solo pueden descifrarse en la misma máquina
+   - Al reabrir el bot, las credenciales se cargan automáticamente
+
+5. **Modo Híbrido**
+   - Si activas login automático → El bot se loguea solo
+   - Si NO lo activas → Funciona como antes (login manual)
+
+
+================================================================================
+CÓMO USAR
+================================================================================
+
+OPCIÓN 1: Login Automático (RECOMENDADO)
+-----------------------------------------
+
+1. Abre el bot (EJECUTAR_BOT_GUI.bat o python Didi_GUI.py)
+
+2. En la sección "🔐 Login Automático (Opcional)":
+   - ✓ Marca el checkbox "Usar login automático"
+   - Ingresa tu usuario (ej: ANDREA.LUVIANO_V)
+   - Ingresa tu contraseña
+   - ✓ Marca "Guardar credenciales" si quieres que se recuerden
+
+3. Click en "▶ INICIAR BOT"
+
+4. El bot hará TODO automáticamente:
+   - Abre Chrome
+   - Navega a página de login
+   - Ingresa usuario y contraseña
+   - Si pide 2FA → Aparece ventana pidiendo código
+   - Ingresa el código de 6 dígitos que te enviaron
+   - ✓ Confirmar
+   - Bot continúa procesando
+
+5. La siguiente vez que abras el bot:
+   - Las credenciales YA están cargadas (si las guardaste)
+   - Solo haz click en "INICIAR BOT"
+   - Si Didi confía en tu dispositivo → NO pedirá 2FA
+   - Si pide 2FA → Solo ingresa el código
+
+
+OPCIÓN 2: Login Manual (Como antes)
+------------------------------------
+
+1. Abre el bot
+
+2. NO marques el checkbox "Usar login automático"
+
+3. Click en "▶ INICIAR BOT"
+
+4. Chrome se abre en página de login
+
+5. Loguéate manualmente en Chrome
+
+6. Vuelve al bot y presiona "INICIAR BOT" nuevamente
+
+
+================================================================================
+FLUJO DETALLADO CON 2FA
+================================================================================
+
+Escenario 1: Primera vez con 2FA
+---------------------------------
+1. Usuario ejecuta bot
+2. Activa login automático e ingresa credenciales
+3. Click "INICIAR BOT"
+4. Bot abre Chrome → Página de login
+5. Bot ingresa usuario y contraseña automáticamente
+6. Didi detecta nuevo dispositivo → Pide 2FA
+7. Bot detecta solicitud de 2FA
+8. Aparece ventana modal: "🔐 Código 2FA Requerido"
+9. Usuario revisa su SMS/Email/App y obtiene código
+10. Usuario ingresa código de 6 dígitos en modal
+11. Usuario hace click en "✓ Confirmar"
+12. Bot ingresa el código en Didi
+13. Login exitoso
+14. Bot procesa registros normalmente
+
+Escenario 2: Siguientes veces (sin 2FA)
+----------------------------------------
+1. Usuario ejecuta bot
+2. Credenciales ya están cargadas (si las guardó)
+3. Click "INICIAR BOT"
+4. Bot abre Chrome (mismo perfil DidiProfile/)
+5. Bot ingresa usuario y contraseña
+6. Didi reconoce el dispositivo → NO pide 2FA
+7. Login exitoso directo
+8. Bot procesa registros
+
+
+================================================================================
+SEGURIDAD DE CREDENCIALES
+================================================================================
+
+¿Dónde se guardan?
+------------------
+Archivo: `.didi_creds.enc` (en la misma carpeta del bot)
+
+¿Cómo se protegen?
+------------------
+- Encriptación AES-256 con Fernet (biblioteca cryptography)
+- Clave de encriptación generada usando SHA-256 de la ruta del proyecto
+- Solo pueden descifrarse en la misma máquina/carpeta
+- El archivo NO es texto plano (es binario encriptado)
+
+¿Qué pasa si roban el archivo?
+-------------------------------
+- Si alguien copia el archivo `.didi_creds.enc` a otra máquina → NO puede descifrarlo
+- La clave de encriptación es única por instalación
+- Es MÁS seguro que tener un archivo .txt con contraseñas
+
+¿Cómo eliminar credenciales guardadas?
+---------------------------------------
+1. Click en botón "🗑️ Borrar guardadas"
+2. Confirmar
+3. El archivo `.didi_creds.enc` se elimina
+4. Debes ingresar credenciales nuevamente la próxima vez
+
+
+================================================================================
+ARCHIVOS MODIFICADOS
+================================================================================
+
+1. Didi_GUI.py
+   - Agregadas funciones de encriptación (líneas 59-108)
+   - Agregada función login_automatico_didi() (líneas 293-389)
+   - Modificada función ejecutar_bot() para usar login automático
+   - Agregada sección de login en GUI
+   - Agregados métodos para modal 2FA
+
+2. requirements.txt
+   - Agregada librería: cryptography==41.0.7
+
+3. .gitignore
+   - Agregada exclusión: .didi_creds.enc
+
+
+================================================================================
+SELECTORES HTML USADOS (Para referencia técnica)
+================================================================================
+
+Página de login Didi:
+URL: https://me.didiglobal.com/project/stargate-auth/html/login.html
+
+Elementos:
+- Campo usuario: <input id="username">
+- Campo contraseña: <input id="password">
+- Botón login: <div id="submit">
+- Campo 2FA: <input id="sms">
+- Contenedor 2FA: <div id="sms-container">
+
+
+================================================================================
+RESOLUCIÓN DE PROBLEMAS
+================================================================================
+
+Problema: "No se pudieron cargar credenciales guardadas"
+---------------------------------------------------------
+Causa: El archivo .didi_creds.enc está corrupto o fue movido
+Solución:
+1. Elimina el archivo .didi_creds.enc manualmente
+2. Ingresa credenciales nuevamente
+3. Guarda de nuevo
+
+
+Problema: "Login automático falló"
+-----------------------------------
+Posibles causas:
+1. Usuario o contraseña incorrectos
+   → Verifica las credenciales
+2. Didi cambió su interfaz de login
+   → Contacta al desarrollador para actualizar selectores
+3. Problemas de red
+   → Verifica conexión a internet
+
+
+Problema: "Tiempo agotado esperando código 2FA"
+------------------------------------------------
+Causa: Usuario tardó más de 120 segundos en ingresar el código
+Solución:
+1. El timeout es de 2 minutos
+2. Si el código tarda en llegar, espera a recibirlo
+3. Si se agota el tiempo, presiona "INICIAR BOT" nuevamente
+
+
+Problema: Modal de 2FA no aparece
+----------------------------------
+Causa: Ventana modal se abrió detrás de Chrome
+Solución:
+1. Minimiza Chrome
+2. Busca ventana "🔐 Código 2FA Requerido"
+3. Ingresa el código
+
+
+================================================================================
+VENTAJAS DE ESTA IMPLEMENTACIÓN
+================================================================================
+
+✅ FLEXIBLE: Puedes elegir login automático o manual
+✅ SEGURO: Credenciales encriptadas, no en texto plano
+✅ CONVENIENTE: Guardas credenciales una vez, se usan siempre
+✅ 2FA DINÁMICO: Maneja tanto casos con 2FA como sin 2FA
+✅ RETROCOMPATIBLE: Si no usas login automático, funciona igual que antes
+✅ MODAL INTERACTIVO: Ingreso de código 2FA con ventana dedicada
+✅ TIMEOUT INTELIGENTE: 2 minutos para ingresar código 2FA
+✅ VALIDACIÓN: Solo acepta códigos de 6 dígitos numéricos
+
+
+================================================================================
+INSTALACIÓN DE NUEVA DEPENDENCIA
+================================================================================
+
+Si actualizas el código, ejecuta:
+
+    pip install cryptography==41.0.7
+
+O reinstala todas las dependencias:
+
+    pip install -r requirements.txt
+
+
+================================================================================
+NOTAS IMPORTANTES
+================================================================================
+
+1. El perfil DidiProfile/ sigue siendo importante
+   - Guarda cookies de sesión de Didi
+   - Hace que Didi "recuerde" el dispositivo
+   - Reduce probabilidad de pedir 2FA en siguientes logins
+
+2. Primer login vs. Siguientes logins
+   - Primera vez: Probablemente pida 2FA
+   - Siguientes: Si Didi confía en el dispositivo, NO pide 2FA
+
+3. Compatibilidad
+   - Funciona con usuarios formato: USUARIO.APELLIDO_V
+   - Funciona con 2FA por SMS, Email, o App
+   - Código debe ser de 6 dígitos numéricos
+
+4. NO compartir credenciales
+   - Aunque estén encriptadas, el archivo es específico por usuario
+   - Cada usuario debe configurar sus propias credenciales
+
+
+================================================================================
+PREGUNTAS FRECUENTES
+================================================================================
+
+P: ¿Es seguro guardar mis credenciales?
+R: Sí, están encriptadas con AES-256. NO están en texto plano.
+
+P: ¿Puedo copiar el archivo .didi_creds.enc a otra computadora?
+R: NO, la encriptación es específica de la instalación.
+
+P: ¿Qué pasa si Didi cambia su página de login?
+R: El bot dejará de funcionar. Contacta al desarrollador para actualizar.
+
+P: ¿El bot guarda mi código 2FA?
+R: NO, el código 2FA solo se usa una vez y NO se guarda en ningún lado.
+
+P: ¿Tengo que usar login automático?
+R: NO, es opcional. Puedes seguir usando login manual como antes.
+
+P: ¿Cuánto tiempo espera el bot para que ingrese el código 2FA?
+R: 120 segundos (2 minutos). Si se agota, reinicia el bot.
+
+P: ¿Funciona con autenticación de dos factores por app (Google Authenticator)?
+R: SÍ, solo ingresa el código de 6 dígitos que te muestre la app.
+
+
+================================================================================
+SOPORTE
+================================================================================
+
+Si tienes problemas con el login automático:
+
+1. Revisa que las credenciales sean correctas
+2. Verifica que tienes instalado: pip install cryptography
+3. Revisa el log en la ventana del bot para ver mensajes de error
+4. Si el problema persiste, usa login manual (desactiva checkbox)
+5. Contacta al desarrollador con el contenido del log
+
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
