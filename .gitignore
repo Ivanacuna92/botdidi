@@ -30,9 +30,6 @@ wheels/
 ChromeProfile/
 DidiProfile/
 
-# Credenciales encriptadas
-.didi_creds.enc
-
 # Ejecutables compilados
 BotDidi_Ejecutable_v2.0/
 

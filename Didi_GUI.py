@@ -22,17 +22,12 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import queue
 import csv
-import json
-from cryptography.fernet import Fernet
-import base64
-import hashlib
 
 # ============================================================================
 # CONFIGURACIÓN GLOBAL
 # ============================================================================
 
 CHROME_PROFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DidiProfile')
-CREDENCIALES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.didi_creds.enc')
 
 DB_CONFIG = {
     'host': 'datenbanken.aloia.dev',
@@ -49,63 +44,10 @@ bot_corriendo = False
 detener_bot = False
 flask_app = None
 driver_global = None
-codigo_2fa_input = None  # Para almacenar el código 2FA ingresado por el usuario
-esperando_2fa = False
 
 # Cola para comunicación entre threads y GUI
 log_queue = queue.Queue()
 stats_queue = queue.Queue()
-
-# ============================================================================
-# GESTIÓN DE CREDENCIALES ENCRIPTADAS
-# ============================================================================
-
-def generar_clave_encriptacion():
-    """Genera una clave de encriptación basada en la máquina"""
-    # Usamos una combinación de datos de la máquina para crear una clave única
-    machine_id = os.path.dirname(os.path.abspath(__file__))
-    key = hashlib.sha256(machine_id.encode()).digest()
-    return base64.urlsafe_b64encode(key)
-
-def encriptar_credenciales(usuario, password):
-    """Encripta las credenciales"""
-    try:
-        cipher = Fernet(generar_clave_encriptacion())
-        data = json.dumps({'usuario': usuario, 'password': password})
-        encrypted = cipher.encrypt(data.encode())
-        with open(CREDENCIALES_FILE, 'wb') as f:
-            f.write(encrypted)
-        return True
-    except Exception as e:
-        log_queue.put(f"[ERROR] No se pudieron guardar credenciales: {e}")
-        return False
-
-def desencriptar_credenciales():
-    """Desencripta las credenciales guardadas"""
-    try:
-        if not os.path.exists(CREDENCIALES_FILE):
-            return None, None
-
-        cipher = Fernet(generar_clave_encriptacion())
-        with open(CREDENCIALES_FILE, 'rb') as f:
-            encrypted = f.read()
-
-        decrypted = cipher.decrypt(encrypted)
-        data = json.loads(decrypted.decode())
-        return data.get('usuario'), data.get('password')
-    except Exception as e:
-        log_queue.put(f"[!] No se pudieron cargar credenciales guardadas: {e}")
-        return None, None
-
-def eliminar_credenciales():
-    """Elimina las credenciales guardadas"""
-    try:
-        if os.path.exists(CREDENCIALES_FILE):
-            os.remove(CREDENCIALES_FILE)
-        return True
-    except Exception as e:
-        log_queue.put(f"[ERROR] No se pudieron eliminar credenciales: {e}")
-        return False
 
 # ============================================================================
 # BACKEND FLASK INTEGRADO
@@ -289,104 +231,6 @@ def conectar_a_chrome():
                 time.sleep(3)
             else:
                 raise
-
-def login_automatico_didi(driver, usuario, password):
-    """Realiza el login automático en Didi"""
-    global codigo_2fa_input, esperando_2fa
-
-    try:
-        log_queue.put("[*] Iniciando login automático...")
-
-        # Navegar a página de login
-        url_login = "https://me.didiglobal.com/project/stargate-auth/html/login.html?redirect_uri=https%3A%2F%2Fmis-auth.didiglobal.com%2Fauth%3Fjumpto%3D%2F%26app_id%3D2054"
-        driver.get(url_login)
-        time.sleep(3)
-
-        # Ingresar usuario
-        log_queue.put("[*] Ingresando usuario...")
-        campo_usuario = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "username"))
-        )
-        campo_usuario.clear()
-        campo_usuario.send_keys(usuario)
-        time.sleep(0.5)
-
-        # Ingresar contraseña
-        log_queue.put("[*] Ingresando contraseña...")
-        campo_password = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "password"))
-        )
-        campo_password.clear()
-        campo_password.send_keys(password)
-        time.sleep(0.5)
-
-        # Click en botón de login
-        log_queue.put("[*] Haciendo click en 'Iniciar sesión'...")
-        boton_login = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.ID, "submit"))
-        )
-        boton_login.click()
-        time.sleep(3)
-
-        # Verificar si pide 2FA
-        log_queue.put("[*] Verificando si se requiere 2FA...")
-        try:
-            campo_2fa = driver.find_element(By.ID, "sms")
-            contenedor_2fa = driver.find_element(By.ID, "sms-container")
-
-            # Verificar si el contenedor de 2FA está visible
-            if contenedor_2fa.is_displayed():
-                log_queue.put("[!] Se requiere código 2FA")
-                log_queue.put("[!] ACCIÓN REQUERIDA: Ingresa el código 2FA en la ventana emergente")
-
-                # Activar bandera de espera
-                esperando_2fa = True
-                codigo_2fa_input = None
-
-                # Esperar hasta 120 segundos a que el usuario ingrese el código
-                timeout = 120
-                inicio = time.time()
-
-                while codigo_2fa_input is None and (time.time() - inicio) < timeout:
-                    time.sleep(0.5)
-
-                if codigo_2fa_input is None:
-                    log_queue.put("[ERROR] Tiempo agotado esperando código 2FA")
-                    esperando_2fa = False
-                    return False
-
-                # Ingresar código 2FA
-                log_queue.put(f"[*] Ingresando código 2FA...")
-                campo_2fa.clear()
-                campo_2fa.send_keys(codigo_2fa_input)
-                time.sleep(1)
-
-                # Click en botón de login nuevamente
-                boton_login = driver.find_element(By.ID, "submit")
-                boton_login.click()
-                time.sleep(5)
-
-                esperando_2fa = False
-                codigo_2fa_input = None
-
-        except:
-            log_queue.put("[OK] No se requiere 2FA, continuando...")
-
-        # Verificar si el login fue exitoso
-        time.sleep(3)
-        url_actual = driver.current_url
-
-        if "/home#/index" in url_actual or "pixiu-prod.didiglobal.com" in url_actual:
-            log_queue.put("[OK] Login exitoso!")
-            return True
-        else:
-            log_queue.put(f"[!] Login falló. URL actual: {url_actual}")
-            return False
-
-    except Exception as e:
-        log_queue.put(f"[ERROR] Error en login automático: {str(e)}")
-        esperando_2fa = False
-        return False
 
 def verificar_sesion_didi(driver):
     """Verifica si el usuario está logueado y en la URL correcta"""
@@ -698,7 +542,7 @@ def navegar_a_mis_casos(driver):
 
     log_queue.put("[OK] Navegación completada")
 
-def ejecutar_bot(credenciales=None):
+def ejecutar_bot():
     """Función principal del bot (se ejecuta en thread separado)"""
     global clientes_exitosos_global, bot_corriendo, detener_bot, driver_global
 
@@ -727,34 +571,14 @@ def ejecutar_bot(credenciales=None):
         driver = conectar_a_chrome()
         driver_global = driver
 
-        # 4. Verificar sesión y URL, o hacer login automático
-        sesion_activa = verificar_sesion_didi(driver)
-
-        if not sesion_activa:
-            # Si no hay sesión activa, intentar login automático si se proporcionaron credenciales
-            if credenciales:
-                usuario, password = credenciales
-                log_queue.put("[*] No hay sesión activa, intentando login automático...")
-
-                if login_automatico_didi(driver, usuario, password):
-                    log_queue.put("[OK] Login automático exitoso!")
-                    sesion_activa = True
-                else:
-                    log_queue.put("[ERROR] Login automático falló")
-                    log_queue.put("[!] ACCIÓN REQUERIDA:")
-                    log_queue.put("[!] 1. Ve a Chrome y verifica las credenciales")
-                    log_queue.put("[!] 2. Loguéate manualmente si es necesario")
-                    log_queue.put("[!] 3. Presiona INICIAR nuevamente cuando estés listo")
-                    bot_corriendo = False
-                    return
-            else:
-                # No hay credenciales, pedir login manual
-                log_queue.put("[!] ACCIÓN REQUERIDA:")
-                log_queue.put("[!] 1. Ve a Chrome y loguéate en Didi")
-                log_queue.put("[!] 2. Navega a la página principal (Dashboard)")
-                log_queue.put("[!] 3. Presiona INICIAR nuevamente cuando estés listo")
-                bot_corriendo = False
-                return
+        # 4. Verificar sesión y URL
+        if not verificar_sesion_didi(driver):
+            log_queue.put("[!] ACCIÓN REQUERIDA:")
+            log_queue.put("[!] 1. Ve a Chrome y loguéate en Didi")
+            log_queue.put("[!] 2. Navega a la página principal (Dashboard)")
+            log_queue.put("[!] 3. Presiona INICIAR nuevamente cuando estés listo")
+            bot_corriendo = False
+            return
 
         # 5. Navegar
         navegar_a_mis_casos(driver)
@@ -895,21 +719,11 @@ class BotDidiGUI:
         self.errores_var = tk.StringVar(value="0")
         self.pagina_var = tk.StringVar(value="0")
 
-        # Variables de credenciales
-        self.usuario_var = tk.StringVar(value="")
-        self.password_var = tk.StringVar(value="")
-        self.guardar_creds_var = tk.BooleanVar(value=False)
-        self.usar_login_auto_var = tk.BooleanVar(value=False)
-
         self.crear_interfaz()
-
-        # Cargar credenciales guardadas si existen
-        self.cargar_credenciales_guardadas()
 
         # Iniciar actualización del log
         self.actualizar_log()
         self.actualizar_stats()
-        self.verificar_2fa_pendiente()
 
     def crear_interfaz(self):
         # Frame principal
@@ -919,49 +733,6 @@ class BotDidiGUI:
         # Título
         titulo = tk.Label(main_frame, text="🤖 BOT DIDI", font=("Arial", 20, "bold"), fg="#2C3E50")
         titulo.pack(pady=10)
-
-        # === SECCIÓN DE LOGIN AUTOMÁTICO ===
-        login_frame = ttk.LabelFrame(main_frame, text="🔐 Login Automático (Opcional)", padding="10")
-        login_frame.pack(fill=tk.X, pady=10)
-
-        # Checkbox para activar/desactivar login automático
-        check_login_auto = ttk.Checkbutton(login_frame, text="Usar login automático",
-                                           variable=self.usar_login_auto_var,
-                                           command=self.toggle_campos_login)
-        check_login_auto.pack(anchor=tk.W, pady=5)
-
-        # Frame para campos de login (inicialmente deshabilitado)
-        self.campos_login_frame = ttk.Frame(login_frame)
-        self.campos_login_frame.pack(fill=tk.X, pady=5)
-
-        # Usuario
-        user_frame = ttk.Frame(self.campos_login_frame)
-        user_frame.pack(fill=tk.X, pady=3)
-        tk.Label(user_frame, text="Usuario:", font=("Arial", 9), width=10, anchor=tk.W).pack(side=tk.LEFT)
-        self.entry_usuario = ttk.Entry(user_frame, textvariable=self.usuario_var, width=30, state=tk.DISABLED)
-        self.entry_usuario.pack(side=tk.LEFT, padx=5)
-
-        # Contraseña
-        pass_frame = ttk.Frame(self.campos_login_frame)
-        pass_frame.pack(fill=tk.X, pady=3)
-        tk.Label(pass_frame, text="Contraseña:", font=("Arial", 9), width=10, anchor=tk.W).pack(side=tk.LEFT)
-        self.entry_password = ttk.Entry(pass_frame, textvariable=self.password_var, show="*", width=30, state=tk.DISABLED)
-        self.entry_password.pack(side=tk.LEFT, padx=5)
-
-        # Opciones
-        opciones_frame = ttk.Frame(self.campos_login_frame)
-        opciones_frame.pack(fill=tk.X, pady=5)
-
-        self.check_guardar_creds = ttk.Checkbutton(opciones_frame, text="Guardar credenciales (encriptadas)",
-                                                   variable=self.guardar_creds_var, state=tk.DISABLED)
-        self.check_guardar_creds.pack(side=tk.LEFT, padx=5)
-
-        self.btn_eliminar_creds = tk.Button(opciones_frame, text="🗑️ Borrar guardadas",
-                                           font=("Arial", 8),
-                                           bg="#E74C3C", fg="white",
-                                           command=self.eliminar_credenciales_guardadas,
-                                           state=tk.DISABLED)
-        self.btn_eliminar_creds.pack(side=tk.LEFT, padx=5)
 
         # Estado
         estado_frame = ttk.Frame(main_frame)
@@ -1072,31 +843,13 @@ class BotDidiGUI:
             messagebox.showwarning("Bot en ejecución", "El bot ya está corriendo")
             return
 
-        # Verificar si se debe usar login automático
-        usar_login_auto = self.usar_login_auto_var.get()
-        usuario = self.usuario_var.get().strip()
-        password = self.password_var.get().strip()
-
-        if usar_login_auto:
-            if not usuario or not password:
-                messagebox.showerror("Error", "Debes ingresar usuario y contraseña para usar login automático")
-                return
-
-            # Guardar credenciales si el usuario lo solicitó
-            if self.guardar_creds_var.get():
-                if encriptar_credenciales(usuario, password):
-                    log_queue.put("[OK] Credenciales guardadas de forma segura")
-
         self.estado_var.set("PROCESANDO")
         self.estado_label.config(fg="#E67E22")
         self.btn_iniciar.config(state=tk.DISABLED)
         self.btn_detener.config(state=tk.NORMAL)
 
-        # Pasar credenciales al bot si está habilitado
-        credenciales = (usuario, password) if usar_login_auto else None
-
         # Iniciar bot en thread
-        bot_thread = Thread(target=ejecutar_bot, args=(credenciales,), daemon=True)
+        bot_thread = Thread(target=ejecutar_bot, daemon=True)
         bot_thread.start()
 
         # Verificar cuando termine
@@ -1214,129 +967,6 @@ class BotDidiGUI:
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo generar el reporte: {e}")
-
-    # ========================================================================
-    # MÉTODOS PARA LOGIN AUTOMÁTICO
-    # ========================================================================
-
-    def toggle_campos_login(self):
-        """Habilita/deshabilita los campos de login según el checkbox"""
-        if self.usar_login_auto_var.get():
-            self.entry_usuario.config(state=tk.NORMAL)
-            self.entry_password.config(state=tk.NORMAL)
-            self.check_guardar_creds.config(state=tk.NORMAL)
-            self.btn_eliminar_creds.config(state=tk.NORMAL)
-        else:
-            self.entry_usuario.config(state=tk.DISABLED)
-            self.entry_password.config(state=tk.DISABLED)
-            self.check_guardar_creds.config(state=tk.DISABLED)
-            self.btn_eliminar_creds.config(state=tk.DISABLED)
-
-    def cargar_credenciales_guardadas(self):
-        """Carga las credenciales guardadas si existen"""
-        usuario, password = desencriptar_credenciales()
-        if usuario and password:
-            self.usuario_var.set(usuario)
-            self.password_var.set(password)
-            self.guardar_creds_var.set(True)
-            self.usar_login_auto_var.set(True)
-            self.toggle_campos_login()
-            log_queue.put("[OK] Credenciales cargadas desde archivo guardado")
-
-    def eliminar_credenciales_guardadas(self):
-        """Elimina las credenciales guardadas"""
-        respuesta = messagebox.askyesno("Eliminar Credenciales",
-                                        "¿Estás seguro de que quieres eliminar las credenciales guardadas?")
-        if respuesta:
-            if eliminar_credenciales():
-                self.usuario_var.set("")
-                self.password_var.set("")
-                self.guardar_creds_var.set(False)
-                messagebox.showinfo("Éxito", "Credenciales eliminadas correctamente")
-                log_queue.put("[OK] Credenciales eliminadas")
-
-    def verificar_2fa_pendiente(self):
-        """Verifica periódicamente si hay solicitud de 2FA pendiente"""
-        global esperando_2fa, codigo_2fa_input
-
-        if esperando_2fa and codigo_2fa_input is None:
-            # Mostrar modal para ingresar código 2FA
-            self.mostrar_modal_2fa()
-
-        # Revisar cada segundo
-        self.root.after(1000, self.verificar_2fa_pendiente)
-
-    def mostrar_modal_2fa(self):
-        """Muestra modal para que el usuario ingrese el código 2FA"""
-        global codigo_2fa_input, esperando_2fa
-
-        # Evitar abrir múltiples modales
-        if hasattr(self, 'modal_2fa_abierto') and self.modal_2fa_abierto:
-            return
-
-        self.modal_2fa_abierto = True
-
-        # Crear ventana modal
-        modal = tk.Toplevel(self.root)
-        modal.title("🔐 Código 2FA Requerido")
-        modal.geometry("400x200")
-        modal.resizable(False, False)
-        modal.grab_set()  # Modal
-
-        # Centrar ventana
-        modal.transient(self.root)
-
-        # Contenido
-        frame = ttk.Frame(modal, padding="20")
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        tk.Label(frame, text="Se requiere código de verificación 2FA",
-                font=("Arial", 12, "bold")).pack(pady=10)
-
-        tk.Label(frame, text="Ingresa el código que recibiste:",
-                font=("Arial", 10)).pack(pady=5)
-
-        codigo_var = tk.StringVar()
-        entry_codigo = ttk.Entry(frame, textvariable=codigo_var,
-                                font=("Arial", 14), width=15, justify=tk.CENTER)
-        entry_codigo.pack(pady=10)
-        entry_codigo.focus()
-
-        def confirmar_codigo():
-            global codigo_2fa_input
-            codigo = codigo_var.get().strip()
-            if len(codigo) == 6 and codigo.isdigit():
-                codigo_2fa_input = codigo
-                self.modal_2fa_abierto = False
-                modal.destroy()
-                log_queue.put(f"[OK] Código 2FA recibido")
-            else:
-                messagebox.showerror("Error", "El código debe tener 6 dígitos numéricos")
-
-        def cancelar():
-            global esperando_2fa
-            esperando_2fa = False
-            self.modal_2fa_abierto = False
-            modal.destroy()
-            log_queue.put("[!] Login 2FA cancelado por el usuario")
-
-        # Botones
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(pady=10)
-
-        tk.Button(btn_frame, text="✓ Confirmar", font=("Arial", 10, "bold"),
-                 bg="#27AE60", fg="white", width=12,
-                 command=confirmar_codigo).pack(side=tk.LEFT, padx=5)
-
-        tk.Button(btn_frame, text="✗ Cancelar", font=("Arial", 10),
-                 bg="#E74C3C", fg="white", width=12,
-                 command=cancelar).pack(side=tk.LEFT, padx=5)
-
-        # Bind Enter key
-        entry_codigo.bind('<Return>', lambda e: confirmar_codigo())
-
-        # Al cerrar la ventana
-        modal.protocol("WM_DELETE_WINDOW", cancelar)
 
 # ============================================================================
 # MAIN
