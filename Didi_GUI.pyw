@@ -18,6 +18,7 @@ from threading import Thread
 from flask import Flask, request, jsonify
 import pymysql
 from datetime import datetime
+from waitress import serve
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import queue
@@ -57,7 +58,10 @@ def iniciar_backend():
     """Inicia el backend Flask en un hilo separado"""
     global flask_app
 
+    log_queue.put("[DEBUG] Thread del backend ejecutándose")
+
     flask_app = Flask(__name__)
+    log_queue.put("[DEBUG] Flask app creada")
 
     @flask_app.route('/registrar', methods=['POST'])
     def registrar():
@@ -92,26 +96,29 @@ def iniciar_backend():
             data = request.get_json()
             nombre = data.get('nombre', 'DESCONOCIDO')
             estado = data.get('estado', 'exitoso')
+            cfrnid = data.get('cfrnid', 'DESCONOCIDO')
+            monto_total = data.get('monto_total', '0.00')
 
             conn = pymysql.connect(**DB_CONFIG)
             cursor = conn.cursor()
 
             cursor.execute("""
-                INSERT INTO bot_clientes_procesados (nombre_cliente, estado)
-                VALUES (%s, %s)
-            """, (nombre, estado))
+                INSERT INTO bot_clientes_procesados (nombre_cliente, estado, cfrnid, monto_total)
+                VALUES (%s, %s, %s, %s)
+            """, (nombre, estado, cfrnid, monto_total))
 
             conn.commit()
             cursor.close()
             conn.close()
 
-            return jsonify({'status': 'ok', 'nombre': nombre, 'estado': estado}), 200
+            return jsonify({'status': 'ok', 'nombre': nombre, 'estado': estado, 'cfrnid': cfrnid, 'monto_total': monto_total}), 200
 
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @flask_app.route('/health', methods=['GET'])
     def health():
+        log_queue.put("[DEBUG] Endpoint /health llamado - respondiendo OK")
         return jsonify({'status': 'ok'}), 200
 
     @flask_app.route('/estadisticas', methods=['GET'])
@@ -146,7 +153,7 @@ def iniciar_backend():
 
             # Obtener todos los clientes procesados hoy
             cursor.execute("""
-                SELECT id, nombre_cliente, estado, fecha_procesado
+                SELECT id, nombre_cliente, estado, fecha_procesado, cfrnid, monto_total
                 FROM bot_clientes_procesados
                 WHERE DATE(fecha_procesado) = %s
                 ORDER BY fecha_procesado DESC
@@ -172,12 +179,24 @@ def iniciar_backend():
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
-    # Ejecutar Flask sin logs molestos
+    # Ejecutar Flask con Waitress (servidor de producción)
     import logging
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
 
-    flask_app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+    log_queue.put("[DEBUG] Todos los endpoints registrados")
+    log_queue.put("[DEBUG] Intentando arrancar servidor con Waitress en puerto 5000...")
+    log_queue.put("[DEBUG] Host: 127.0.0.1, Puerto: 5000")
+
+    try:
+        log_queue.put("[DEBUG] Iniciando waitress.serve()...")
+        # Waitress es más rápido y confiable que el servidor de desarrollo de Flask
+        serve(flask_app, host='127.0.0.1', port=5000, threads=4, _quiet=True)
+        log_queue.put("[DEBUG] Waitress terminó de ejecutarse")
+    except Exception as e:
+        log_queue.put(f"[ERROR] Waitress falló al arrancar: {str(e)}")
+        import traceback
+        log_queue.put(f"[ERROR] Traceback: {traceback.format_exc()}")
 
 # ============================================================================
 # GESTIÓN DE CHROME
@@ -404,17 +423,40 @@ def procesar_registro(driver, indice_registro):
 
         # Capturar el nombre del cliente desde la vista de detalles
         nombre_cliente = "DESCONOCIDO"
+        cfrnid = "DESCONOCIDO"
+        monto_total = "0.00"
+
         try:
-            log_queue.put("[*] Capturando nombre del cliente desde vista de detalles...")
-            # Buscar el contenedor que tiene la etiqueta "Nombre"
-            elemento_nombre = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Nombre')]/following-sibling::span[@class='el-descriptions-item__content']"))
-            )
-            nombre_cliente = elemento_nombre.text.strip()
-            log_queue.put(f"[OK] ✓ Cliente capturado: {nombre_cliente}")
+            log_queue.put("[*] Capturando datos del cliente desde vista de detalles...")
+
+            # Capturar Nombre
+            try:
+                elemento_nombre = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Nombre')]/following-sibling::span[@class='el-descriptions-item__content']"))
+                )
+                nombre_cliente = elemento_nombre.text.strip()
+                log_queue.put(f"[OK] ✓ Cliente capturado: {nombre_cliente}")
+            except Exception as e:
+                log_queue.put(f"[!] No se pudo capturar nombre: {str(e)}")
+
+            # Capturar cfrnid
+            try:
+                elemento_cfrnid = driver.find_element(By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'cfrnid')]/following-sibling::span[@class='el-descriptions-item__content']")
+                cfrnid = elemento_cfrnid.text.strip()
+                log_queue.put(f"[OK] ✓ cfrnid capturado: {cfrnid}")
+            except Exception as e:
+                log_queue.put(f"[!] No se pudo capturar cfrnid: {str(e)}")
+
+            # Capturar Monto total del estado de cuenta (ignorando el icono)
+            try:
+                elemento_monto = driver.find_element(By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Monto total del estado de cuenta')]/following-sibling::span[@class='el-descriptions-item__content']")
+                monto_total = elemento_monto.text.strip()
+                log_queue.put(f"[OK] ✓ Monto total capturado: {monto_total}")
+            except Exception as e:
+                log_queue.put(f"[!] No se pudo capturar monto total: {str(e)}")
+
         except Exception as e:
-            log_queue.put(f"[ERROR] No se pudo capturar nombre desde detalles: {str(e)}")
-            log_queue.put(f"[!] Se usará 'DESCONOCIDO' como nombre")
+            log_queue.put(f"[ERROR] Error general capturando datos: {str(e)}")
             nombre_cliente = "DESCONOCIDO"
 
         # Verificar si se debe detener
@@ -565,10 +607,19 @@ def procesar_registro(driver, indice_registro):
             time.sleep(2)
 
         log_queue.put(f"[OK] Registro #{indice_registro + 1} completado - {nombre_cliente}")
-        return True, nombre_cliente
+
+        # Retornar diccionario con todos los datos capturados
+        datos_cliente = {
+            'nombre': nombre_cliente,
+            'cfrnid': cfrnid,
+            'monto_total': monto_total
+        }
+        return True, datos_cliente
 
     except Exception as e:
         nombre_cliente = locals().get('nombre_cliente', 'DESCONOCIDO')
+        cfrnid = locals().get('cfrnid', 'DESCONOCIDO')
+        monto_total = locals().get('monto_total', '0.00')
         log_queue.put(f"[ERROR] Error en registro #{indice_registro + 1}: {str(e)}")
         try:
             link_mis_casos = driver.find_element(By.XPATH, "//a[@href='/pixiu/#/my_case/my_case_index']//li[@class='el-menu-item']")
@@ -576,7 +627,14 @@ def procesar_registro(driver, indice_registro):
             time.sleep(2)
         except:
             pass
-        return False, nombre_cliente
+
+        # Retornar diccionario incluso en caso de error
+        datos_cliente = {
+            'nombre': nombre_cliente,
+            'cfrnid': cfrnid,
+            'monto_total': monto_total
+        }
+        return False, datos_cliente
 
 # ============================================================================
 # NAVEGACIÓN Y PROCESAMIENTO PRINCIPAL
@@ -643,12 +701,100 @@ def ejecutar_bot():
     pagina_actual = 1
 
     try:
-        # 1. Iniciar backend
-        log_queue.put("[*] Iniciando backend...")
+        # 1. Limpiar puerto 5000 de ejecuciones anteriores
+        log_queue.put("[*] Verificando puerto 5000...")
+        procesos_cerrados = 0
+        for proc in psutil.process_iter(['pid', 'name', 'connections']):
+            try:
+                for conn in proc.connections():
+                    if hasattr(conn, 'laddr') and conn.laddr.port == 5000:
+                        log_queue.put(f"[*] Cerrando proceso anterior en puerto 5000 (PID {proc.pid} - {proc.name()})...")
+                        proc.kill()
+                        procesos_cerrados += 1
+                        time.sleep(1)
+                        break
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
+                pass
+
+        if procesos_cerrados > 0:
+            log_queue.put(f"[OK] {procesos_cerrados} proceso(s) cerrado(s) del puerto 5000")
+            time.sleep(2)  # Espera adicional para que el SO libere el puerto
+        else:
+            log_queue.put("[OK] Puerto 5000 libre")
+
+        # 2. Iniciar backend
+        log_queue.put("[*] Iniciando backend con Waitress...")
         backend_thread = Thread(target=iniciar_backend, daemon=True)
         backend_thread.start()
+        log_queue.put("[*] Esperando a que Waitress arranque (3 segundos)...")
+        time.sleep(3)
+
+        # Esperar a que el puerto esté en LISTEN
+        log_queue.put("[*] Esperando a que el puerto 5000 esté en estado LISTEN...")
+        puerto_listo = False
+        for intento_puerto in range(10):  # 10 intentos × 1 segundo = 10 segundos max
+            for proc in psutil.process_iter(['pid', 'name', 'connections']):
+                try:
+                    for conn in proc.connections():
+                        if hasattr(conn, 'laddr') and hasattr(conn, 'status'):
+                            if conn.laddr.port == 5000 and conn.status == 'LISTEN':
+                                log_queue.put(f"[OK] ✓ Puerto 5000 está en LISTEN (PID {proc.pid})")
+                                puerto_listo = True
+                                break
+                except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                    pass
+                if puerto_listo:
+                    break
+            if puerto_listo:
+                break
+            log_queue.put(f"[DEBUG] Puerto no está LISTEN aún... intento {intento_puerto + 1}/10")
+            time.sleep(1)
+
+        if not puerto_listo:
+            log_queue.put("[ERROR] Puerto 5000 nunca entró en estado LISTEN")
+            log_queue.put("[!] El servidor no pudo arrancar correctamente")
+            bot_corriendo = False
+            return
+
+        # Dar tiempo extra para que el servidor termine de inicializarse
+        log_queue.put("[*] Puerto listo, esperando 2 segundos más para inicialización completa...")
         time.sleep(2)
-        log_queue.put("[OK] Backend iniciado")
+
+        # Verificar que el backend esté disponible (con reintentos reducidos ya que el puerto está listo)
+        log_queue.put("[*] Verificando conexión con backend vía HTTP...")
+        backend_ok = False
+        for intento in range(3):  # Solo 3 intentos ya que el puerto está LISTEN
+            try:
+                timeout = 5  # 5 segundos es suficiente ahora
+                log_queue.put(f"[DEBUG] Intento {intento + 1}/3: Llamando a http://localhost:5000/health... (timeout={timeout}s)")
+                response = requests.get('http://localhost:5000/health', timeout=timeout)
+                log_queue.put(f"[DEBUG] Respuesta recibida: status_code={response.status_code}")
+                if response.status_code == 200:
+                    log_queue.put(f"[OK] ✓✓ Backend respondiendo correctamente!")
+                    backend_ok = True
+                    break
+            except requests.exceptions.ConnectionError as e:
+                log_queue.put(f"[DEBUG] Intento {intento + 1} falló: ConnectionError")
+                if intento < 2:
+                    time.sleep(2)
+            except requests.exceptions.ReadTimeout as e:
+                log_queue.put(f"[DEBUG] Intento {intento + 1} falló: ReadTimeout")
+                if intento < 2:
+                    time.sleep(2)
+            except Exception as e:
+                log_queue.put(f"[DEBUG] Intento {intento + 1} falló: {type(e).__name__} - {str(e)}")
+                if intento < 2:
+                    time.sleep(2)
+
+        if not backend_ok:
+            log_queue.put("[ERROR] Backend no responde después de 3 intentos")
+            log_queue.put("[ERROR] El bot no puede continuar sin backend")
+            log_queue.put("[!] POSIBLES SOLUCIONES:")
+            log_queue.put("[!] 1. Ejecuta: python cerrar_puerto_5000.py")
+            log_queue.put("[!] 2. Reinicia el programa")
+            log_queue.put("[!] 3. Verifica que el puerto 5000 no esté bloqueado por firewall")
+            bot_corriendo = False
+            return
 
         # 2. Gestionar Chrome
         # No cerramos otras instancias porque usamos un perfil independiente
@@ -724,7 +870,7 @@ def ejecutar_bot():
                     break
 
                 total_procesados += 1
-                exito, nombre_cliente = procesar_registro(driver, i)
+                exito, datos_cliente = procesar_registro(driver, i)
 
                 # Registrar cliente individual en la base de datos
                 if exito:
@@ -733,7 +879,12 @@ def ejecutar_bot():
                     # Registrar cliente individual Y actualizar contador diario
                     try:
                         r1 = requests.post('http://localhost:5000/registrar_cliente',
-                                    json={'nombre': nombre_cliente, 'estado': 'exitoso'},
+                                    json={
+                                        'nombre': datos_cliente['nombre'],
+                                        'cfrnid': datos_cliente['cfrnid'],
+                                        'monto_total': datos_cliente['monto_total'],
+                                        'estado': 'exitoso'
+                                    },
                                     timeout=2)
                         if r1.status_code != 200:
                             log_queue.put(f"[!] Error al registrar cliente: {r1.text}")
@@ -756,7 +907,12 @@ def ejecutar_bot():
                     # Registrar solo cliente individual (errores no se cuentan en bot_ejecuciones)
                     try:
                         r1 = requests.post('http://localhost:5000/registrar_cliente',
-                                    json={'nombre': nombre_cliente, 'estado': 'error'},
+                                    json={
+                                        'nombre': datos_cliente['nombre'],
+                                        'cfrnid': datos_cliente['cfrnid'],
+                                        'monto_total': datos_cliente['monto_total'],
+                                        'estado': 'error'
+                                    },
                                     timeout=2)
                         if r1.status_code != 200:
                             log_queue.put(f"[!] Error al registrar cliente con error: {r1.text}")
@@ -1070,13 +1226,15 @@ class BotDidiGUI:
                 writer.writerow([])  # Línea en blanco
 
                 # Encabezados de la tabla
-                writer.writerow(['ID', 'Nombre del Cliente', 'Estado', 'Fecha/Hora Procesado'])
+                writer.writerow(['ID', 'Nombre del Cliente', 'CFRNID', 'Monto Total', 'Estado', 'Fecha/Hora Procesado'])
 
                 # Datos de clientes
                 for cliente in clientes:
                     writer.writerow([
                         cliente['id'],
                         cliente['nombre_cliente'],
+                        cliente.get('cfrnid', 'N/A'),
+                        cliente.get('monto_total', 'N/A'),
                         cliente['estado'].upper(),
                         cliente['fecha_procesado']
                     ])
