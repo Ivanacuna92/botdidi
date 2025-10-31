@@ -1,1257 +1,178 @@
 """
 BOT DIDI - VERSIÓN CON INTERFAZ GRÁFICA
 Interfaz super simple para que cualquier usuario pueda usar el bot
+
+ARQUITECTURA MODULAR:
+- config/: Configuraciones globales
+- backend/: Servidor Flask para registro en BD
+- chrome/: Gestión y verificación de Chrome
+- bot/: Lógica de procesamiento y navegación
+- gui/: Interfaz gráfica Tkinter
 """
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-import time
-import os
-import sys
-import requests
-import subprocess
-import psutil
-from threading import Thread
-from flask import Flask, request, jsonify
-import pymysql
-from datetime import datetime
-from waitress import serve
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox, filedialog
-import queue
-import csv
+from tkinter import messagebox
+import time
+import psutil
+import requests
+from threading import Thread
+from gui.activation import mostrar_activacion
+from gui.login import mostrar_login
+from gui.interface import BotDidiGUI
+from bot.main import ejecutar_bot
+from backend.flask_server import iniciar_backend
+from backend.license_utils import leer_token_local, generar_hardware_id
 
-# ============================================================================
-# CONFIGURACIÓN GLOBAL
-# ============================================================================
-
-CHROME_PROFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'DidiProfile')
-
-DB_CONFIG = {
-    'host': 'datenbanken.aloia.dev',
-    'port': 3306,
-    'user': 'aloiadidibot',
-    'password': 'aloia2025didi!',
-    'database': 'DidiMonitoreo',
-    'charset': 'utf8mb4'
-}
 
 # Variables globales
-clientes_exitosos_global = 0
-bot_corriendo = False
-detener_bot = False
-flask_app = None
-driver_global = None
+token_global = None
+usuario_global = None
+clave_licencia_global = None
 
-# Cola para comunicación entre threads y GUI
-log_queue = queue.Queue()
-stats_queue = queue.Queue()
 
-# ============================================================================
-# BACKEND FLASK INTEGRADO
-# ============================================================================
+def iniciar_backend_startup():
+    """Inicia el backend al arrancar la aplicación"""
+    print("[*] Verificando puerto 5000...")
 
-def iniciar_backend():
-    """Inicia el backend Flask en un hilo separado"""
-    global flask_app
-
-    log_queue.put("[DEBUG] Thread del backend ejecutándose")
-
-    flask_app = Flask(__name__)
-    log_queue.put("[DEBUG] Flask app creada")
-
-    @flask_app.route('/registrar', methods=['POST'])
-    def registrar():
+    # Limpiar puerto 5000 de ejecuciones anteriores
+    procesos_cerrados = 0
+    for proc in psutil.process_iter(['pid', 'name', 'connections']):
         try:
-            data = request.get_json()
-            clientes = data.get('clientes', 0)
-
-            conn = pymysql.connect(**DB_CONFIG)
-            cursor = conn.cursor()
-
-            fecha_hoy = datetime.now().strftime('%Y-%m-%d')
-
-            cursor.execute("""
-                INSERT INTO bot_ejecuciones (fecha, clientes_procesados)
-                VALUES (%s, %s)
-                ON DUPLICATE KEY UPDATE
-                clientes_procesados = clientes_procesados + %s
-            """, (fecha_hoy, clientes, clientes))
-
-            conn.commit()
-            cursor.close()
-            conn.close()
-
-            return jsonify({'status': 'ok', 'clientes': clientes}), 200
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @flask_app.route('/registrar_cliente', methods=['POST'])
-    def registrar_cliente():
-        try:
-            data = request.get_json()
-            nombre = data.get('nombre', 'DESCONOCIDO')
-            estado = data.get('estado', 'exitoso')
-            cfrnid = data.get('cfrnid', 'DESCONOCIDO')
-            monto_total = data.get('monto_total', '0.00')
-
-            conn = pymysql.connect(**DB_CONFIG)
-            cursor = conn.cursor()
-
-            cursor.execute("""
-                INSERT INTO bot_clientes_procesados (nombre_cliente, estado, cfrnid, monto_total)
-                VALUES (%s, %s, %s, %s)
-            """, (nombre, estado, cfrnid, monto_total))
-
-            conn.commit()
-            cursor.close()
-            conn.close()
-
-            return jsonify({'status': 'ok', 'nombre': nombre, 'estado': estado, 'cfrnid': cfrnid, 'monto_total': monto_total}), 200
-
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @flask_app.route('/health', methods=['GET'])
-    def health():
-        log_queue.put("[DEBUG] Endpoint /health llamado - respondiendo OK")
-        return jsonify({'status': 'ok'}), 200
-
-    @flask_app.route('/estadisticas', methods=['GET'])
-    def estadisticas():
-        try:
-            dias = int(request.args.get('dias', 7))
-            conn = pymysql.connect(**DB_CONFIG)
-            cursor = conn.cursor(pymysql.cursors.DictCursor)
-
-            cursor.execute("""
-                SELECT fecha, clientes_procesados
-                FROM bot_ejecuciones
-                ORDER BY fecha DESC
-                LIMIT %s
-            """, (dias,))
-
-            resultados = cursor.fetchall()
-            cursor.close()
-            conn.close()
-
-            return jsonify({'status': 'ok', 'datos': resultados}), 200
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @flask_app.route('/clientes_hoy', methods=['GET'])
-    def clientes_hoy():
-        try:
-            conn = pymysql.connect(**DB_CONFIG)
-            cursor = conn.cursor(pymysql.cursors.DictCursor)
-
-            fecha_hoy = datetime.now().strftime('%Y-%m-%d')
-
-            # Obtener todos los clientes procesados hoy
-            cursor.execute("""
-                SELECT id, nombre_cliente, estado, fecha_procesado, cfrnid, monto_total
-                FROM bot_clientes_procesados
-                WHERE DATE(fecha_procesado) = %s
-                ORDER BY fecha_procesado DESC
-            """, (fecha_hoy,))
-
-            clientes = cursor.fetchall()
-
-            # Contar totales
-            total = len(clientes)
-            exitosos = sum(1 for c in clientes if c['estado'] == 'exitoso')
-            errores = sum(1 for c in clientes if c['estado'] == 'error')
-
-            cursor.close()
-            conn.close()
-
-            return jsonify({
-                'status': 'ok',
-                'clientes': clientes,
-                'total': total,
-                'exitosos': exitosos,
-                'errores': errores
-            }), 200
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    # Ejecutar Flask con Waitress (servidor de producción)
-    import logging
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR)
-
-    log_queue.put("[DEBUG] Todos los endpoints registrados")
-    log_queue.put("[DEBUG] Intentando arrancar servidor con Waitress en puerto 5000...")
-    log_queue.put("[DEBUG] Host: 127.0.0.1, Puerto: 5000")
-
-    try:
-        log_queue.put("[DEBUG] Iniciando waitress.serve()...")
-        # Waitress es más rápido y confiable que el servidor de desarrollo de Flask
-        serve(flask_app, host='127.0.0.1', port=5000, threads=4, _quiet=True)
-        log_queue.put("[DEBUG] Waitress terminó de ejecutarse")
-    except Exception as e:
-        log_queue.put(f"[ERROR] Waitress falló al arrancar: {str(e)}")
-        import traceback
-        log_queue.put(f"[ERROR] Traceback: {traceback.format_exc()}")
-
-# ============================================================================
-# GESTIÓN DE CHROME
-# ============================================================================
-
-def cerrar_chrome_existente():
-    """Cierra todas las instancias de Chrome"""
-    log_queue.put("[*] Cerrando instancias previas de Chrome...")
-    for proc in psutil.process_iter(['name']):
-        try:
-            if 'chrome' in proc.info['name'].lower():
-                proc.kill()
-        except:
+            for conn in proc.connections():
+                if hasattr(conn, 'laddr') and conn.laddr.port == 5000:
+                    print(f"[*] Cerrando proceso anterior en puerto 5000 (PID {proc.pid})...")
+                    proc.kill()
+                    procesos_cerrados += 1
+                    time.sleep(1)
+                    break
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
             pass
-    time.sleep(2)
 
-def abrir_chrome_con_perfil():
-    """Abre Chrome con perfil persistente y debugging (solo si no está abierto)"""
-    # Verificar si Chrome ya está corriendo en el puerto 9222
-    try:
-        response = requests.get('http://localhost:9222/json/version', timeout=2)
-        if response.status_code == 200:
-            log_queue.put("[OK] Chrome ya está abierto, usando la ventana existente")
-            return
-    except:
-        pass
+    if procesos_cerrados > 0:
+        print(f"[OK] {procesos_cerrados} proceso(s) cerrado(s)")
+        time.sleep(2)
+    else:
+        print("[OK] Puerto 5000 libre")
 
-    # Si no está abierto, abrirlo
-    log_queue.put("[*] Abriendo Chrome con perfil dedicado...")
+    # Iniciar backend en thread
+    print("[*] Iniciando backend Flask...")
+    backend_thread = Thread(target=iniciar_backend, daemon=True)
+    backend_thread.start()
+    time.sleep(3)
 
-    os.makedirs(CHROME_PROFILE, exist_ok=True)
-
-    chrome_paths = [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe")
-    ]
-
-    chrome_exe = None
-    for path in chrome_paths:
-        if os.path.exists(path):
-            chrome_exe = path
-            break
-
-    if not chrome_exe:
-        raise Exception("No se encontró Chrome instalado")
-
-    cmd = [
-        chrome_exe,
-        f"--user-data-dir={CHROME_PROFILE}",
-        "--remote-debugging-port=9222",
-        "https://me.didiglobal.com/project/stargate-auth/html/login.html?redirect_uri=https%3A%2F%2Fmis-auth.didiglobal.com%2Fauth%3Fjumpto%3D%2F%26app_id%3D2054"
-    ]
-
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    log_queue.put("[OK] Chrome abierto en pagina de login de Didi")
-    time.sleep(5)
-
-def conectar_a_chrome():
-    """Se conecta a Chrome con reintentos"""
-    log_queue.put("[*] Conectando al navegador...")
-
-    chrome_options = Options()
-    chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-
-    driver = None
-    for intento in range(3):
+    # Verificar que el backend esté disponible
+    print("[*] Verificando backend...")
+    for intento in range(5):
         try:
-            driver = webdriver.Chrome(options=chrome_options)
-            log_queue.put("[OK] Conectado a Chrome exitosamente")
-
-            # Buscar una pestana valida
-            try:
-                handles = driver.window_handles
-                log_queue.put(f"[DEBUG] Encontradas {len(handles)} pestanas")
-
-                pestana_valida = False
-                for i, handle in enumerate(handles):
-                    try:
-                        driver.switch_to.window(handle)
-                        _ = driver.current_url  # Test de contexto
-                        log_queue.put(f"[OK] Usando pestana {i+1} (valida)")
-                        pestana_valida = True
-                        break
-                    except:
-                        continue
-
-                if not pestana_valida:
-                    log_queue.put("[!] Ninguna pestana valida, se navegara al dashboard automaticamente")
-
-            except Exception as e:
-                log_queue.put(f"[!] Advertencia al verificar pestanas: {str(e)}")
-
-            return driver
+            response = requests.get('http://localhost:5000/health', timeout=3)
+            if response.status_code == 200:
+                print("[OK] Backend iniciado correctamente")
+                return True
         except:
-            if intento < 2:
-                log_queue.put(f"[!] Intento {intento + 1} fallido, reintentando...")
-                time.sleep(3)
-            else:
-                raise
+            if intento < 4:
+                print(f"[*] Esperando backend... ({intento + 1}/5)")
+                time.sleep(2)
 
-def verificar_sesion_didi(driver):
-    """Verifica si el usuario está logueado y en la URL correcta"""
+    return False
+
+
+def validar_licencia_con_servidor(clave, hardware_id):
+    """Valida la licencia con el servidor"""
     try:
-        url_esperada = "https://pixiu-prod.didiglobal.com/global-fintech/creditcard/mx/global-pixiu-api/home#/index"
-
-        # Intentar obtener URL actual
-        url_actual = None
-        try:
-            url_actual = driver.current_url
-            log_queue.put(f"[DEBUG] URL actual: {url_actual}")
-        except Exception as e:
-            error_msg = str(e).lower()
-
-            # Si es error de contexto, intentar recuperar
-            if "execution context" in error_msg or "no such window" in error_msg or "frame" in error_msg:
-                log_queue.put("[!] Contexto de pestana perdido, intentando recuperar...")
-
-                # ESTRATEGIA 1: Intentar cambiar a todas las pestanas hasta encontrar una valida
-                try:
-                    log_queue.put("[*] Buscando pestana valida...")
-                    handles = driver.window_handles
-                    log_queue.put(f"[DEBUG] Encontradas {len(handles)} pestanas")
-
-                    for i, handle in enumerate(handles):
-                        try:
-                            driver.switch_to.window(handle)
-                            test_url = driver.current_url  # Test si esta pestana funciona
-                            log_queue.put(f"[OK] Pestana {i+1} es valida, usando esta")
-                            url_actual = test_url
-                            break
-                        except:
-                            log_queue.put(f"[!] Pestana {i+1} invalida, probando siguiente...")
-                            continue
-                except Exception as e2:
-                    log_queue.put(f"[!] No se pudo cambiar de pestana: {str(e2)}")
-
-                # ESTRATEGIA 2: Si ninguna pestana funciona, navegar directamente
-                if url_actual is None:
-                    log_queue.put("[*] Todas las pestanas invalidas, navegando directamente...")
-                    try:
-                        driver.get(url_esperada)
-                        time.sleep(5)
-                        url_actual = driver.current_url
-                        log_queue.put(f"[OK] Navegacion directa exitosa: {url_actual}")
-                    except Exception as e3:
-                        log_queue.put(f"[ERROR] No se pudo recuperar contexto: {str(e3)}")
-                        return False
-            else:
-                # Otro tipo de error, intentar navegar directamente
-                log_queue.put("[!] Error obteniendo URL, navegando al dashboard...")
-                try:
-                    driver.get(url_esperada)
-                    time.sleep(5)
-                    url_actual = driver.current_url
-                    log_queue.put(f"[DEBUG] URL despues de navegar: {url_actual}")
-                except:
-                    return False
-
-        # Si todavia no tenemos URL, fallar
-        if url_actual is None:
-            log_queue.put("[ERROR] No se pudo obtener URL valida")
-            return False
-
-        # Verificar URL
-        if url_esperada not in url_actual and "/home#/index" not in url_actual:
-            log_queue.put(f"[!] URL incorrecta. Navegando al dashboard...")
-            driver.get(url_esperada)
-            time.sleep(5)
-            log_queue.put("[OK] Navegado al dashboard")
-
-        log_queue.put("[OK] En dashboard correcto, verificando sesión...")
-
-        # Verificar que el menú esté presente (usuario logueado)
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.XPATH, "//ul[@role='menubar' and contains(@class, 'el-menu')]"))
+        response = requests.post(
+            'http://localhost:5000/licencias/validar',
+            json={
+                'clave': clave,
+                'hardware_id': hardware_id
+            },
+            timeout=5
         )
-        log_queue.put("[OK] Usuario logueado correctamente")
-        return True
+        return response.status_code == 200
     except Exception as e:
-        log_queue.put(f"[!] Error en verificación: {str(e)}")
-        log_queue.put("[!] Probablemente no estés logueado o la página no cargó")
+        print(f"[ERROR] No se pudo validar licencia: {e}")
         return False
 
-# ============================================================================
-# PROCESAMIENTO DE REGISTROS
-# ============================================================================
 
-def procesar_registro(driver, indice_registro):
-    """Procesa un registro completo"""
-    global detener_bot
+def on_activation_exitosa(clave):
+    """Callback cuando la activación es exitosa"""
+    global clave_licencia_global
+    clave_licencia_global = clave
+    print(f"[OK] Licencia activada: {clave}")
+    # Continuar con el login
+    mostrar_login(on_login_exitoso)
+
+
+def on_login_exitoso(token, usuario):
+    """Callback cuando el login es exitoso"""
+    global token_global, usuario_global
+    token_global = token
+    usuario_global = usuario
+
+    # Crear ventana principal del bot
+    root = tk.Tk()
+    app = BotDidiGUI(root, ejecutar_bot, token, usuario)
+    root.mainloop()
 
-    if detener_bot:
-        return False, "DETENIDO"
-
-    try:
-        log_queue.put(f"[*] Procesando registro #{indice_registro + 1}")
-
-        time.sleep(1)
-
-        botones_detalles = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.XPATH, "//td[not(contains(@class, 'is-hidden'))]//button[contains(@class, 'el-button') and .//span[text()='Detalles']]"))
-        )
-
-        if indice_registro >= len(botones_detalles):
-            return False, "SIN_REGISTROS"
-
-        boton_detalles = botones_detalles[indice_registro]
-
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_detalles)
-        time.sleep(0.5)
-
-        try:
-            boton_detalles.click()
-        except:
-            driver.execute_script("arguments[0].click();", boton_detalles)
-
-        time.sleep(2)
-
-        # Verificar si se debe detener
-        if detener_bot:
-            log_queue.put("[!] Bot detenido por el usuario")
-            return False, "DESCONOCIDO"
-
-        # Capturar el nombre del cliente desde la vista de detalles
-        nombre_cliente = "DESCONOCIDO"
-        cfrnid = "DESCONOCIDO"
-        monto_total = "0.00"
-
-        try:
-            log_queue.put("[*] Capturando datos del cliente desde vista de detalles...")
-
-            # Capturar Nombre
-            try:
-                elemento_nombre = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Nombre')]/following-sibling::span[@class='el-descriptions-item__content']"))
-                )
-                nombre_cliente = elemento_nombre.text.strip()
-                log_queue.put(f"[OK] ✓ Cliente capturado: {nombre_cliente}")
-            except Exception as e:
-                log_queue.put(f"[!] No se pudo capturar nombre: {str(e)}")
-
-            # Capturar cfrnid
-            try:
-                elemento_cfrnid = driver.find_element(By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'cfrnid')]/following-sibling::span[@class='el-descriptions-item__content']")
-                cfrnid = elemento_cfrnid.text.strip()
-                log_queue.put(f"[OK] ✓ cfrnid capturado: {cfrnid}")
-            except Exception as e:
-                log_queue.put(f"[!] No se pudo capturar cfrnid: {str(e)}")
-
-            # Capturar Monto total del estado de cuenta (ignorando el icono)
-            try:
-                elemento_monto = driver.find_element(By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Monto total del estado de cuenta')]/following-sibling::span[@class='el-descriptions-item__content']")
-                monto_total = elemento_monto.text.strip()
-                log_queue.put(f"[OK] ✓ Monto total capturado: {monto_total}")
-            except Exception as e:
-                log_queue.put(f"[!] No se pudo capturar monto total: {str(e)}")
-
-        except Exception as e:
-            log_queue.put(f"[ERROR] Error general capturando datos: {str(e)}")
-            nombre_cliente = "DESCONOCIDO"
-
-        # Verificar si se debe detener
-        if detener_bot:
-            log_queue.put("[!] Bot detenido por el usuario")
-            return False, nombre_cliente
-
-        log_queue.put(f"[*] Continuando con cliente: {nombre_cliente}")
-
-        # WhatsApp
-        boton_whatsapp = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//button[contains(@class, 'el-button') and contains(., 'whatsapp')]"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_whatsapp)
-        time.sleep(0.5)
-        try:
-            boton_whatsapp.click()
-        except:
-            driver.execute_script("arguments[0].click();", boton_whatsapp)
-        time.sleep(2)
-
-        # Verificar si se debe detener
-        if detener_bot:
-            log_queue.put("[!] Bot detenido por el usuario")
-            return False, nombre_cliente
-
-        # Plantilla
-        boton_plantilla = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//button[contains(@class, 'check-template80')]"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_plantilla)
-        time.sleep(0.5)
-        try:
-            boton_plantilla.click()
-        except:
-            driver.execute_script("arguments[0].click();", boton_plantilla)
-        time.sleep(2)
-
-        # Enviar
-        contenido_plantilla = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content')]"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
-        time.sleep(0.5)
-        try:
-            contenido_plantilla.click()
-        except:
-            driver.execute_script("arguments[0].click();", contenido_plantilla)
-        time.sleep(1.5)
-
-        botones = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--medium')]"))
-        )
-        boton_enviar = None
-        for boton in botones:
-            if "Enviar" in boton.text:
-                boton_enviar = boton
-                break
-
-        if boton_enviar:
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_enviar)
-            time.sleep(0.5)
-            try:
-                boton_enviar.click()
-            except:
-                driver.execute_script("arguments[0].click();", boton_enviar)
-            time.sleep(2)
-
-        # Verificar si se debe detener
-        if detener_bot:
-            log_queue.put("[!] Bot detenido por el usuario")
-            return False, nombre_cliente
-
-        # Código del pago
-        time.sleep(2)
-        botones = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--mini')]"))
-        )
-        boton_codigo = None
-        for boton in botones:
-            if "Código del pago" in boton.text or "Codigo del pago" in boton.text:
-                boton_codigo = boton
-                break
-
-        if boton_codigo:
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_codigo)
-            time.sleep(0.5)
-            try:
-                boton_codigo.click()
-            except:
-                driver.execute_script("arguments[0].click();", boton_codigo)
-            time.sleep(2)
-
-        # Verificar si se debe detener
-        if detener_bot:
-            log_queue.put("[!] Bot detenido por el usuario")
-            return False, nombre_cliente
-
-        # Confirmar
-        time.sleep(1)
-        radio_button = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//table//input[@type='radio']"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", radio_button)
-        time.sleep(0.5)
-        try:
-            radio_button.click()
-        except:
-            driver.execute_script("arguments[0].click();", radio_button)
-        time.sleep(1.5)
-
-        botones_confirmar = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--medium')]"))
-        )
-        boton_confirmar = None
-        for boton in botones_confirmar:
-            if "Confirmar" in boton.text:
-                boton_confirmar = boton
-                break
-
-        if boton_confirmar:
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_confirmar)
-            time.sleep(0.5)
-            try:
-                boton_confirmar.click()
-            except:
-                driver.execute_script("arguments[0].click();", boton_confirmar)
-            time.sleep(2)
-
-        # Cerrar pestaña
-        try:
-            boton_cerrar_tab = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.XPATH, "//span[contains(@class, 'tags-view-item') and contains(., 'Detalles del lead')]//span[contains(@class, 'el-icon-close')]"))
-            )
-            try:
-                boton_cerrar_tab.click()
-            except:
-                driver.execute_script("arguments[0].click();", boton_cerrar_tab)
-            time.sleep(1)
-        except:
-            link_mis_casos = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.XPATH, "//a[@href='/pixiu/#/my_case/my_case_index']//li[@class='el-menu-item']"))
-            )
-            try:
-                link_mis_casos.click()
-            except:
-                driver.execute_script("arguments[0].click();", link_mis_casos)
-            time.sleep(2)
-
-        log_queue.put(f"[OK] Registro #{indice_registro + 1} completado - {nombre_cliente}")
-
-        # Retornar diccionario con todos los datos capturados
-        datos_cliente = {
-            'nombre': nombre_cliente,
-            'cfrnid': cfrnid,
-            'monto_total': monto_total
-        }
-        return True, datos_cliente
-
-    except Exception as e:
-        nombre_cliente = locals().get('nombre_cliente', 'DESCONOCIDO')
-        cfrnid = locals().get('cfrnid', 'DESCONOCIDO')
-        monto_total = locals().get('monto_total', '0.00')
-        log_queue.put(f"[ERROR] Error en registro #{indice_registro + 1}: {str(e)}")
-        try:
-            link_mis_casos = driver.find_element(By.XPATH, "//a[@href='/pixiu/#/my_case/my_case_index']//li[@class='el-menu-item']")
-            driver.execute_script("arguments[0].click();", link_mis_casos)
-            time.sleep(2)
-        except:
-            pass
-
-        # Retornar diccionario incluso en caso de error
-        datos_cliente = {
-            'nombre': nombre_cliente,
-            'cfrnid': cfrnid,
-            'monto_total': monto_total
-        }
-        return False, datos_cliente
-
-# ============================================================================
-# NAVEGACIÓN Y PROCESAMIENTO PRINCIPAL
-# ============================================================================
-
-def navegar_a_mis_casos(driver):
-    """Navega al menú Mis casos"""
-    log_queue.put("[*] Navegando al dashboard...")
-
-    # Menu principal
-    menu_principal = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//ul[@role='menubar' and contains(@class, 'el-menu')]"))
-    )
-
-    # Expandir Mesa de trabajo
-    submenu_mesa_trabajo = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//div[@class='el-submenu__title']//span[contains(@title, 'Mesa de trabajo')]"))
-    )
-    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", submenu_mesa_trabajo)
-    time.sleep(0.5)
-    try:
-        submenu_mesa_trabajo.click()
-    except:
-        driver.execute_script("arguments[0].click();", submenu_mesa_trabajo)
-    time.sleep(1.5)
-
-    # Expandir Mis casos
-    submenu_mis_casos = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//div[@class='nest-menu']//div[@class='el-submenu__title']//span[@title='Mis casos']"))
-    )
-    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", submenu_mis_casos)
-    time.sleep(0.5)
-    try:
-        submenu_mis_casos.click()
-    except:
-        driver.execute_script("arguments[0].click();", submenu_mis_casos)
-    time.sleep(1.5)
-
-    # Click en link final
-    link_mis_casos = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//a[@href='/pixiu/#/my_case/my_case_index']//li[@class='el-menu-item']"))
-    )
-    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", link_mis_casos)
-    time.sleep(0.5)
-    try:
-        link_mis_casos.click()
-    except:
-        driver.execute_script("arguments[0].click();", link_mis_casos)
-    time.sleep(2)
-
-    log_queue.put("[OK] Navegación completada")
-
-def ejecutar_bot():
-    """Función principal del bot (se ejecuta en thread separado)"""
-    global clientes_exitosos_global, bot_corriendo, detener_bot, driver_global
-
-    bot_corriendo = True
-    detener_bot = False
-    clientes_exitosos_global = 0
-
-    total_procesados = 0
-    total_exitosos = 0
-    total_errores = 0
-    pagina_actual = 1
-
-    try:
-        # 1. Limpiar puerto 5000 de ejecuciones anteriores
-        log_queue.put("[*] Verificando puerto 5000...")
-        procesos_cerrados = 0
-        for proc in psutil.process_iter(['pid', 'name', 'connections']):
-            try:
-                for conn in proc.connections():
-                    if hasattr(conn, 'laddr') and conn.laddr.port == 5000:
-                        log_queue.put(f"[*] Cerrando proceso anterior en puerto 5000 (PID {proc.pid} - {proc.name()})...")
-                        proc.kill()
-                        procesos_cerrados += 1
-                        time.sleep(1)
-                        break
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError):
-                pass
-
-        if procesos_cerrados > 0:
-            log_queue.put(f"[OK] {procesos_cerrados} proceso(s) cerrado(s) del puerto 5000")
-            time.sleep(2)  # Espera adicional para que el SO libere el puerto
-        else:
-            log_queue.put("[OK] Puerto 5000 libre")
-
-        # 2. Iniciar backend
-        log_queue.put("[*] Iniciando backend con Waitress...")
-        backend_thread = Thread(target=iniciar_backend, daemon=True)
-        backend_thread.start()
-        log_queue.put("[*] Esperando a que Waitress arranque (3 segundos)...")
-        time.sleep(3)
-
-        # Esperar a que el puerto esté en LISTEN
-        log_queue.put("[*] Esperando a que el puerto 5000 esté en estado LISTEN...")
-        puerto_listo = False
-        for intento_puerto in range(10):  # 10 intentos × 1 segundo = 10 segundos max
-            for proc in psutil.process_iter(['pid', 'name', 'connections']):
-                try:
-                    for conn in proc.connections():
-                        if hasattr(conn, 'laddr') and hasattr(conn, 'status'):
-                            if conn.laddr.port == 5000 and conn.status == 'LISTEN':
-                                log_queue.put(f"[OK] ✓ Puerto 5000 está en LISTEN (PID {proc.pid})")
-                                puerto_listo = True
-                                break
-                except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
-                    pass
-                if puerto_listo:
-                    break
-            if puerto_listo:
-                break
-            log_queue.put(f"[DEBUG] Puerto no está LISTEN aún... intento {intento_puerto + 1}/10")
-            time.sleep(1)
-
-        if not puerto_listo:
-            log_queue.put("[ERROR] Puerto 5000 nunca entró en estado LISTEN")
-            log_queue.put("[!] El servidor no pudo arrancar correctamente")
-            bot_corriendo = False
-            return
-
-        # Dar tiempo extra para que el servidor termine de inicializarse
-        log_queue.put("[*] Puerto listo, esperando 2 segundos más para inicialización completa...")
-        time.sleep(2)
-
-        # Verificar que el backend esté disponible (con reintentos reducidos ya que el puerto está listo)
-        log_queue.put("[*] Verificando conexión con backend vía HTTP...")
-        backend_ok = False
-        for intento in range(3):  # Solo 3 intentos ya que el puerto está LISTEN
-            try:
-                timeout = 5  # 5 segundos es suficiente ahora
-                log_queue.put(f"[DEBUG] Intento {intento + 1}/3: Llamando a http://localhost:5000/health... (timeout={timeout}s)")
-                response = requests.get('http://localhost:5000/health', timeout=timeout)
-                log_queue.put(f"[DEBUG] Respuesta recibida: status_code={response.status_code}")
-                if response.status_code == 200:
-                    log_queue.put(f"[OK] ✓✓ Backend respondiendo correctamente!")
-                    backend_ok = True
-                    break
-            except requests.exceptions.ConnectionError as e:
-                log_queue.put(f"[DEBUG] Intento {intento + 1} falló: ConnectionError")
-                if intento < 2:
-                    time.sleep(2)
-            except requests.exceptions.ReadTimeout as e:
-                log_queue.put(f"[DEBUG] Intento {intento + 1} falló: ReadTimeout")
-                if intento < 2:
-                    time.sleep(2)
-            except Exception as e:
-                log_queue.put(f"[DEBUG] Intento {intento + 1} falló: {type(e).__name__} - {str(e)}")
-                if intento < 2:
-                    time.sleep(2)
-
-        if not backend_ok:
-            log_queue.put("[ERROR] Backend no responde después de 3 intentos")
-            log_queue.put("[ERROR] El bot no puede continuar sin backend")
-            log_queue.put("[!] POSIBLES SOLUCIONES:")
-            log_queue.put("[!] 1. Ejecuta: python cerrar_puerto_5000.py")
-            log_queue.put("[!] 2. Reinicia el programa")
-            log_queue.put("[!] 3. Verifica que el puerto 5000 no esté bloqueado por firewall")
-            bot_corriendo = False
-            return
-
-        # 2. Gestionar Chrome
-        # No cerramos otras instancias porque usamos un perfil independiente
-        abrir_chrome_con_perfil()
-
-        # 3. Conectar
-        driver = conectar_a_chrome()
-        driver_global = driver
-
-        # 4. Verificar sesión y URL con espera inteligente
-        log_queue.put("[*] Verificando sesión...")
-        sesion_valida = verificar_sesion_didi(driver)
-
-        if not sesion_valida:
-            log_queue.put("[!] No se detectó sesión activa")
-            log_queue.put("[*] Esperando a que te loguees en Chrome...")
-            log_queue.put("[*] Tienes 5 minutos para completar el login")
-            log_queue.put("[!] ACCIÓN REQUERIDA:")
-            log_queue.put("[!] 1. Ve a la ventana de Chrome")
-            log_queue.put("[!] 2. Completa el login en Didi")
-            log_queue.put("[!] 3. El bot detectará automáticamente cuando termines")
-
-            # Loop de espera: 30 intentos × 10 segundos = 5 minutos
-            intentos_maximos = 30
-            for intento in range(intentos_maximos):
-                if detener_bot:
-                    log_queue.put("[!] Espera de login cancelada por el usuario")
-                    bot_corriendo = False
-                    return
-
-                time.sleep(10)  # Esperar 10 segundos entre intentos
-
-                tiempo_restante = (intentos_maximos - intento - 1) * 10
-                minutos = tiempo_restante // 60
-                segundos = tiempo_restante % 60
-
-                log_queue.put(f"[*] Verificando login... (Intento {intento + 1}/{intentos_maximos} - Quedan {minutos}m {segundos}s)")
-
-                if verificar_sesion_didi(driver):
-                    log_queue.put("[OK] ✓ Login detectado exitosamente!")
-                    sesion_valida = True
-                    break
-
-            if not sesion_valida:
-                log_queue.put("[ERROR] Tiempo agotado esperando login (5 minutos)")
-                log_queue.put("[!] Por favor loguéate manualmente y presiona INICIAR nuevamente")
-                bot_corriendo = False
-                return
-
-        # 5. Navegar
-        navegar_a_mis_casos(driver)
-
-        # 6. Procesar registros
-        log_queue.put("[*] Iniciando procesamiento masivo...")
-
-        while not detener_bot:
-            log_queue.put(f"[*] Procesando página {pagina_actual}...")
-
-            tabla = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//table[contains(@class, 'el-table')]"))
-            )
-            time.sleep(1)
-
-            botones_detalles = driver.find_elements(By.XPATH, "//td[not(contains(@class, 'is-hidden'))]//button[contains(@class, 'el-button') and .//span[text()='Detalles']]")
-            num_registros = len(botones_detalles)
-            log_queue.put(f"[OK] {num_registros} registros en página {pagina_actual}")
-
-            if num_registros == 0:
-                break
-
-            for i in range(num_registros):
-                if detener_bot:
-                    break
-
-                total_procesados += 1
-                exito, datos_cliente = procesar_registro(driver, i)
-
-                # Registrar cliente individual en la base de datos
-                if exito:
-                    total_exitosos += 1
-                    clientes_exitosos_global += 1
-                    # Registrar cliente individual Y actualizar contador diario
-                    try:
-                        r1 = requests.post('http://localhost:5000/registrar_cliente',
-                                    json={
-                                        'nombre': datos_cliente['nombre'],
-                                        'cfrnid': datos_cliente['cfrnid'],
-                                        'monto_total': datos_cliente['monto_total'],
-                                        'estado': 'exitoso'
-                                    },
-                                    timeout=2)
-                        if r1.status_code != 200:
-                            log_queue.put(f"[!] Error al registrar cliente: {r1.text}")
-                        # Actualizar contador diario también
-                        r2 = requests.post('http://localhost:5000/registrar',
-                                    json={'clientes': 1},
-                                    timeout=2)
-                        if r2.status_code != 200:
-                            log_queue.put(f"[!] Error al actualizar contador: {r2.text}")
-                    except Exception as e:
-                        log_queue.put(f"[!] Error guardando en BD: {e}")
-                    stats_queue.put({
-                        'total': total_procesados,
-                        'exitosos': total_exitosos,
-                        'errores': total_errores,
-                        'pagina': pagina_actual
-                    })
-                else:
-                    total_errores += 1
-                    # Registrar solo cliente individual (errores no se cuentan en bot_ejecuciones)
-                    try:
-                        r1 = requests.post('http://localhost:5000/registrar_cliente',
-                                    json={
-                                        'nombre': datos_cliente['nombre'],
-                                        'cfrnid': datos_cliente['cfrnid'],
-                                        'monto_total': datos_cliente['monto_total'],
-                                        'estado': 'error'
-                                    },
-                                    timeout=2)
-                        if r1.status_code != 200:
-                            log_queue.put(f"[!] Error al registrar cliente con error: {r1.text}")
-                    except Exception as e:
-                        log_queue.put(f"[!] Error guardando cliente con error en BD: {e}")
-                    stats_queue.put({
-                        'total': total_procesados,
-                        'exitosos': total_exitosos,
-                        'errores': total_errores,
-                        'pagina': pagina_actual
-                    })
-
-            if detener_bot:
-                break
-
-            # Siguiente página
-            try:
-                boton_siguiente = driver.find_element(By.XPATH, "//button[contains(@class, 'btn-next') and not(@disabled)]//i[contains(@class, 'el-icon-arrow-right')]")
-                boton_siguiente_padre = boton_siguiente.find_element(By.XPATH, "./..")
-                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_siguiente_padre)
-                time.sleep(0.5)
-                try:
-                    boton_siguiente_padre.click()
-                except:
-                    driver.execute_script("arguments[0].click();", boton_siguiente_padre)
-                time.sleep(2)
-                pagina_actual += 1
-            except:
-                log_queue.put("[OK] No hay más páginas")
-                break
-
-        # Guardar en BD
-        if clientes_exitosos_global > 0 and not detener_bot:
-            log_queue.put(f"[*] Guardando {clientes_exitosos_global} clientes en BD...")
-            try:
-                response = requests.post('http://localhost:5000/registrar',
-                                        json={'clientes': clientes_exitosos_global},
-                                        timeout=5)
-                if response.status_code == 200:
-                    log_queue.put(f"[OK] {clientes_exitosos_global} clientes guardados")
-            except Exception as e:
-                log_queue.put(f"[ERROR] No se pudo guardar: {e}")
-
-        if detener_bot:
-            log_queue.put("[!] Bot detenido por el usuario")
-        else:
-            log_queue.put("[OK] PROCESAMIENTO COMPLETADO")
-            log_queue.put(f"[*] Total: {total_procesados} | Exitosos: {total_exitosos} | Errores: {total_errores}")
-
-    except Exception as e:
-        log_queue.put(f"[ERROR] Error crítico: {str(e)}")
-        import traceback
-        log_queue.put(traceback.format_exc())
-
-    finally:
-        bot_corriendo = False
-        driver_global = None
-
-# ============================================================================
-# INTERFAZ GRÁFICA CON TKINTER
-# ============================================================================
-
-class BotDidiGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("🤖 Bot Didi - Sistema Automatizado")
-        self.root.geometry("700x750")
-        self.root.resizable(True, True)
-
-        # Configurar estilo
-        style = ttk.Style()
-        style.theme_use('clam')
-
-        # Variables
-        self.estado_var = tk.StringVar(value="LISTO")
-        self.clientes_var = tk.StringVar(value="0")
-        self.exitosos_var = tk.StringVar(value="0")
-        self.errores_var = tk.StringVar(value="0")
-        self.pagina_var = tk.StringVar(value="0")
-
-        self.crear_interfaz()
-
-        # Iniciar actualización del log
-        self.actualizar_log()
-        self.actualizar_stats()
-
-    def crear_interfaz(self):
-        # Frame principal
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Título
-        titulo = tk.Label(main_frame, text="🤖 BOT DIDI", font=("Arial", 20, "bold"), fg="#2C3E50")
-        titulo.pack(pady=10)
-
-        # Estado
-        estado_frame = ttk.Frame(main_frame)
-        estado_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(estado_frame, text="Estado:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
-        self.estado_label = tk.Label(estado_frame, textvariable=self.estado_var,
-                                     font=("Arial", 10), fg="#27AE60")
-        self.estado_label.pack(side=tk.LEFT, padx=10)
-
-        # Botones de control
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(pady=15)
-
-        self.btn_iniciar = tk.Button(btn_frame, text="▶  INICIAR BOT",
-                                     font=("Arial", 14, "bold"),
-                                     bg="#27AE60", fg="white",
-                                     width=20, height=2,
-                                     command=self.iniciar_bot)
-        self.btn_iniciar.pack(side=tk.LEFT, padx=5)
-
-        self.btn_detener = tk.Button(btn_frame, text="⬛  DETENER",
-                                     font=("Arial", 14, "bold"),
-                                     bg="#E74C3C", fg="white",
-                                     width=15, height=2,
-                                     command=self.detener_bot,
-                                     state=tk.DISABLED)
-        self.btn_detener.pack(side=tk.LEFT, padx=5)
-
-        # Estadísticas
-        stats_frame = ttk.LabelFrame(main_frame, text="📊 Estadísticas en Vivo", padding="10")
-        stats_frame.pack(fill=tk.X, pady=10)
-
-        # Grid de estadísticas
-        tk.Label(stats_frame, text="Clientes procesados:", font=("Arial", 9)).grid(row=0, column=0, sticky=tk.W, pady=2)
-        tk.Label(stats_frame, textvariable=self.clientes_var, font=("Arial", 9, "bold"), fg="#3498DB").grid(row=0, column=1, sticky=tk.W, padx=10)
-
-        tk.Label(stats_frame, text="Exitosos:", font=("Arial", 9)).grid(row=1, column=0, sticky=tk.W, pady=2)
-        tk.Label(stats_frame, textvariable=self.exitosos_var, font=("Arial", 9, "bold"), fg="#27AE60").grid(row=1, column=1, sticky=tk.W, padx=10)
-
-        tk.Label(stats_frame, text="Errores:", font=("Arial", 9)).grid(row=2, column=0, sticky=tk.W, pady=2)
-        tk.Label(stats_frame, textvariable=self.errores_var, font=("Arial", 9, "bold"), fg="#E74C3C").grid(row=2, column=1, sticky=tk.W, padx=10)
-
-        tk.Label(stats_frame, text="Página actual:", font=("Arial", 9)).grid(row=3, column=0, sticky=tk.W, pady=2)
-        tk.Label(stats_frame, textvariable=self.pagina_var, font=("Arial", 9, "bold"), fg="#8E44AD").grid(row=3, column=1, sticky=tk.W, padx=10)
-
-        # Log
-        log_frame = ttk.LabelFrame(main_frame, text="📝 Log de Actividad", padding="10")
-        log_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=12, state=tk.DISABLED,
-                                                  font=("Consolas", 9), bg="#2C3E50", fg="#ECF0F1")
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-
-        # Botones de reportes
-        reportes_frame = ttk.Frame(main_frame)
-        reportes_frame.pack(pady=5)
-
-        btn_stats = tk.Button(reportes_frame, text="📊 Ver Estadísticas Completas",
-                             font=("Arial", 10),
-                             bg="#3498DB", fg="white",
-                             command=self.ver_estadisticas)
-        btn_stats.pack(side=tk.LEFT, padx=5)
-
-        btn_reporte = tk.Button(reportes_frame, text="💾 Descargar Reporte CSV",
-                               font=("Arial", 10),
-                               bg="#9B59B6", fg="white",
-                               command=self.generar_reporte)
-        btn_reporte.pack(side=tk.LEFT, padx=5)
-
-    def agregar_log(self, mensaje):
-        """Agrega mensaje al log"""
-        self.log_text.config(state=tk.NORMAL)
-        self.log_text.insert(tk.END, mensaje + "\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state=tk.DISABLED)
-
-    def actualizar_log(self):
-        """Actualiza el log desde la cola"""
-        try:
-            while True:
-                mensaje = log_queue.get_nowait()
-                self.agregar_log(mensaje)
-        except queue.Empty:
-            pass
-        finally:
-            self.root.after(100, self.actualizar_log)
-
-    def actualizar_stats(self):
-        """Actualiza las estadísticas desde la cola"""
-        try:
-            while True:
-                stats = stats_queue.get_nowait()
-                self.clientes_var.set(str(stats['total']))
-                self.exitosos_var.set(str(stats['exitosos']))
-                self.errores_var.set(str(stats['errores']))
-                self.pagina_var.set(str(stats['pagina']))
-        except queue.Empty:
-            pass
-        finally:
-            self.root.after(100, self.actualizar_stats)
-
-    def iniciar_bot(self):
-        """Inicia el bot en un thread separado"""
-        global bot_corriendo
-
-        if bot_corriendo:
-            messagebox.showwarning("Bot en ejecución", "El bot ya está corriendo")
-            return
-
-        self.estado_var.set("PROCESANDO")
-        self.estado_label.config(fg="#E67E22")
-        self.btn_iniciar.config(state=tk.DISABLED)
-        self.btn_detener.config(state=tk.NORMAL)
-
-        # Iniciar bot en thread
-        bot_thread = Thread(target=ejecutar_bot, daemon=True)
-        bot_thread.start()
-
-        # Verificar cuando termine
-        self.verificar_estado_bot()
-
-    def detener_bot(self):
-        """Detiene el bot"""
-        global detener_bot
-
-        respuesta = messagebox.askyesno("Detener Bot",
-                                        "¿Estás seguro de que quieres detener el bot?")
-        if respuesta:
-            detener_bot = True
-            log_queue.put("[!] Deteniendo bot...")
-
-    def verificar_estado_bot(self):
-        """Verifica el estado del bot periódicamente"""
-        global bot_corriendo
-
-        if not bot_corriendo:
-            self.estado_var.set("LISTO")
-            self.estado_label.config(fg="#27AE60")
-            self.btn_iniciar.config(state=tk.NORMAL)
-            self.btn_detener.config(state=tk.DISABLED)
-        else:
-            self.root.after(1000, self.verificar_estado_bot)
-
-    def ver_estadisticas(self):
-        """Muestra ventana con estadísticas completas"""
-        try:
-            response = requests.get('http://localhost:5000/estadisticas?dias=30', timeout=5)
-            if response.status_code == 200:
-                datos = response.json()['datos']
-
-                # Crear ventana de estadísticas
-                stats_window = tk.Toplevel(self.root)
-                stats_window.title("Estadísticas Completas (últimos 30 días)")
-                stats_window.geometry("500x400")
-
-                # Tabla de estadísticas
-                tree = ttk.Treeview(stats_window, columns=('Fecha', 'Clientes'), show='headings')
-                tree.heading('Fecha', text='Fecha')
-                tree.heading('Clientes', text='Clientes Procesados')
-
-                tree.column('Fecha', width=200)
-                tree.column('Clientes', width=200)
-
-                for dato in datos:
-                    tree.insert('', tk.END, values=(dato['fecha'], dato['clientes_procesados']))
-
-                tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-            else:
-                messagebox.showerror("Error", "No se pudieron obtener las estadísticas")
-        except Exception as e:
-            messagebox.showerror("Error", f"Backend no disponible: {e}")
-
-    def generar_reporte(self):
-        """Genera y descarga un reporte CSV de clientes procesados hoy"""
-        try:
-            # Obtener clientes procesados hoy desde el backend
-            response = requests.get('http://localhost:5000/clientes_hoy', timeout=5)
-            if response.status_code != 200:
-                messagebox.showerror("Error", "No se pudieron obtener los datos del reporte")
-                return
-
-            datos = response.json()
-            clientes = datos.get('clientes', [])
-            total = datos.get('total', 0)
-            exitosos = datos.get('exitosos', 0)
-            errores = datos.get('errores', 0)
-
-            if total == 0:
-                messagebox.showinfo("Reporte", "No hay clientes procesados hoy para generar reporte")
-                return
-
-            # Pedir al usuario dónde guardar el archivo
-            fecha_hoy = datetime.now().strftime('%Y-%m-%d')
-            archivo_default = f"Reporte_Clientes_{fecha_hoy}.csv"
-
-            archivo = filedialog.asksaveasfilename(
-                defaultextension=".csv",
-                filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-                initialfile=archivo_default,
-                title="Guardar Reporte"
-            )
-
-            if not archivo:  # Usuario canceló
-                return
-
-            # Crear el archivo CSV
-            with open(archivo, 'w', newline='', encoding='utf-8-sig') as csvfile:
-                writer = csv.writer(csvfile)
-
-                # Encabezado del reporte
-                writer.writerow(['REPORTE DE CLIENTES PROCESADOS'])
-                writer.writerow(['Fecha', fecha_hoy])
-                writer.writerow(['Total de clientes', total])
-                writer.writerow(['Exitosos', exitosos])
-                writer.writerow(['Errores', errores])
-                writer.writerow([])  # Línea en blanco
-
-                # Encabezados de la tabla
-                writer.writerow(['ID', 'Nombre del Cliente', 'CFRNID', 'Monto Total', 'Estado', 'Fecha/Hora Procesado'])
-
-                # Datos de clientes
-                for cliente in clientes:
-                    writer.writerow([
-                        cliente['id'],
-                        cliente['nombre_cliente'],
-                        cliente.get('cfrnid', 'N/A'),
-                        cliente.get('monto_total', 'N/A'),
-                        cliente['estado'].upper(),
-                        cliente['fecha_procesado']
-                    ])
-
-            messagebox.showinfo("Éxito", f"Reporte generado exitosamente:\n{archivo}\n\nTotal: {total} clientes ({exitosos} exitosos, {errores} errores)")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"No se pudo generar el reporte: {e}")
-
-# ============================================================================
-# MAIN
-# ============================================================================
 
 def main():
-    root = tk.Tk()
-    app = BotDidiGUI(root)
-    root.mainloop()
+    """Punto de entrada principal del programa"""
+    print("=" * 60)
+    print(" " * 15 + "BOT DIDI - INICIANDO")
+    print("=" * 60)
+
+    # PASO 1: Iniciar backend
+    print("\n[1/3] Iniciando backend...")
+    backend_ok = iniciar_backend_startup()
+
+    if not backend_ok:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(
+            "Error de Backend",
+            "No se pudo iniciar el servidor backend.\n\n"
+            "Posibles soluciones:\n"
+            "1. Verifica que el puerto 5000 esté libre\n"
+            "2. Reinicia la aplicación\n"
+            "3. Verifica la conexión a la base de datos"
+        )
+        root.destroy()
+        return
+
+    # PASO 2: Validar licencia
+    print("\n[2/3] Validando licencia...")
+    hardware_id = generar_hardware_id()
+    print(f"[*] Hardware ID: {hardware_id}")
+
+    # Intentar leer token local
+    token_local = leer_token_local()
+
+    if token_local:
+        clave, hw_id, expira = token_local
+        print(f"[*] Token local encontrado: {clave}")
+        print(f"[*] Expira: {expira}")
+
+        # Validar con servidor
+        print("[*] Validando con servidor...")
+        if validar_licencia_con_servidor(clave, hardware_id):
+            print("[OK] ✓ Licencia válida")
+            global clave_licencia_global
+            clave_licencia_global = clave
+        else:
+            print("[!] Token local inválido o expirado")
+            # Pedir activación
+            print("[*] Solicitando activación...")
+            mostrar_activacion(on_activation_exitosa)
+            return
+    else:
+        print("[!] No se encontró token local")
+        print("[*] Solicitando activación...")
+        # Mostrar pantalla de activación
+        mostrar_activacion(on_activation_exitosa)
+        return
+
+    # PASO 3: Mostrar login
+    print("\n[3/3] Mostrando login...")
+    mostrar_login(on_login_exitoso)
+
 
 if __name__ == "__main__":
     main()
