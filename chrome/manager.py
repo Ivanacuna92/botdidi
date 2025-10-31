@@ -8,6 +8,7 @@ import time
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 
 from config.settings import (
     CHROME_PROFILE,
@@ -16,6 +17,7 @@ from config.settings import (
     DIDI_LOGIN_URL,
     log_queue
 )
+from config.paths import CHROMEDRIVER_PATH, IS_FROZEN
 
 
 def cerrar_chrome_existente():
@@ -97,7 +99,21 @@ def conectar_a_chrome():
     driver = None
     for intento in range(3):
         try:
-            driver = webdriver.Chrome(options=chrome_options)
+            # Estrategia inteligente para ChromeDriver:
+            # 1. Si estamos en .exe Y existe chromedriver incluido, usarlo
+            # 2. Si no, intentar sin especificar (Selenium Manager lo manejará)
+
+            if IS_FROZEN and CHROMEDRIVER_PATH and os.path.exists(CHROMEDRIVER_PATH):
+                # Modo .exe con chromedriver incluido
+                log_queue.put(f"[DEBUG] Usando ChromeDriver incluido: {CHROMEDRIVER_PATH}")
+                service = Service(executable_path=CHROMEDRIVER_PATH)
+                driver = webdriver.Chrome(service=service, options=chrome_options)
+            else:
+                # Modo desarrollo o .exe sin chromedriver
+                # Selenium Manager manejará la descarga automática (en desarrollo)
+                # En .exe intentará funcionar sin él (solo conectar a Chrome existente)
+                driver = webdriver.Chrome(options=chrome_options)
+
             log_queue.put("[OK] Conectado a Chrome exitosamente")
 
             # Buscar y limpiar pestanas

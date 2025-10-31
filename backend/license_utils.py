@@ -145,7 +145,9 @@ def obtener_clave_encriptacion():
 
 
 # Archivo donde se guarda el token local
-TOKEN_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.license_token')
+# Importar desde config.paths para que funcione tanto en desarrollo como en .exe
+from config.paths import TOKEN_PATH
+TOKEN_FILE = TOKEN_PATH
 
 
 def guardar_token_local(clave_licencia, hardware_id):

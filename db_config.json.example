@@ -1,0 +1,8 @@
+{
+    "host": "datenbanken.aloia.dev",
+    "port": 3306,
+    "user": "aloiadidibot",
+    "password": "aloia2025didi!",
+    "database": "DidiMonitoreo",
+    "charset": "utf8mb4"
+}

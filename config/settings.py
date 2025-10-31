@@ -3,25 +3,64 @@ Configuración global del Bot Didi
 """
 import os
 import queue
+import json
 
 # ============================================================================
-# RUTAS Y PERFILES
+# RUTAS DINÁMICAS (desarrollo vs .exe)
 # ============================================================================
 
-CHROME_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'DidiProfile')
+# Importar gestión de rutas que detecta automáticamente el modo
+from config.paths import (
+    BASE_DIR,
+    CHROME_PROFILE,
+    DB_CONFIG_PATH,
+    IS_FROZEN
+)
 
 # ============================================================================
 # BASE DE DATOS
 # ============================================================================
 
-DB_CONFIG = {
-    'host': 'datenbanken.aloia.dev',
-    'port': 3306,
-    'user': 'aloiadidibot',
-    'password': 'aloia2025didi!',
-    'database': 'DidiMonitoreo',
-    'charset': 'utf8mb4'
-}
+# Intentar cargar configuración desde archivo externo
+# Esto protege las credenciales cuando distribuimos el .exe
+if os.path.exists(DB_CONFIG_PATH):
+    # Si existe el archivo, cargar desde ahí
+    try:
+        with open(DB_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            DB_CONFIG = json.load(f)
+        if IS_FROZEN:
+            print(f"[OK] Configuración de BD cargada desde: {DB_CONFIG_PATH}")
+    except Exception as e:
+        print(f"[ERROR] No se pudo cargar db_config.json: {e}")
+        # Usar valores por defecto como fallback
+        DB_CONFIG = {
+            'host': 'datenbanken.aloia.dev',
+            'port': 3306,
+            'user': 'aloiadidibot',
+            'password': 'aloia2025didi!',
+            'database': 'DidiMonitoreo',
+            'charset': 'utf8mb4'
+        }
+else:
+    # Valores por defecto (desarrollo)
+    DB_CONFIG = {
+        'host': 'datenbanken.aloia.dev',
+        'port': 3306,
+        'user': 'aloiadidibot',
+        'password': 'aloia2025didi!',
+        'database': 'DidiMonitoreo',
+        'charset': 'utf8mb4'
+    }
+
+    # Si estamos en .exe y no existe el archivo, crearlo automáticamente
+    if IS_FROZEN:
+        try:
+            os.makedirs(os.path.dirname(DB_CONFIG_PATH), exist_ok=True)
+            with open(DB_CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(DB_CONFIG, f, indent=4)
+            print(f"[*] Archivo db_config.json creado en: {DB_CONFIG_PATH}")
+        except Exception as e:
+            print(f"[!] No se pudo crear db_config.json: {e}")
 
 # ============================================================================
 # URLS

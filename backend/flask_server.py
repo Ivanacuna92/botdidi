@@ -9,6 +9,7 @@ from datetime import datetime
 import logging
 
 from config.settings import DB_CONFIG, BACKEND_HOST, BACKEND_PORT, BACKEND_THREADS, log_queue
+from config.paths import IS_FROZEN
 from backend.models import Usuario
 from backend.auth_utils import (
     hash_password, verificar_password, generar_token,
@@ -310,19 +311,34 @@ def iniciar_backend():
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
+    # Configurar Flask para modo .exe
+    if IS_FROZEN:
+        # En .exe: deshabilitar debug y propagación de excepciones
+        flask_app.config['DEBUG'] = False
+        flask_app.config['PROPAGATE_EXCEPTIONS'] = False
+        log_queue.put("[*] Modo .EXE: Flask en modo producción")
+
     # Ejecutar Flask con Waitress (servidor de producción)
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
 
-    log_queue.put("[DEBUG] Todos los endpoints registrados")
-    log_queue.put("[DEBUG] Intentando arrancar servidor con Waitress en puerto 5000...")
-    log_queue.put(f"[DEBUG] Host: {BACKEND_HOST}, Puerto: {BACKEND_PORT}")
+    if not IS_FROZEN:
+        # Solo mostrar logs detallados en desarrollo
+        log_queue.put("[DEBUG] Todos los endpoints registrados")
+        log_queue.put("[DEBUG] Intentando arrancar servidor con Waitress en puerto 5000...")
+        log_queue.put(f"[DEBUG] Host: {BACKEND_HOST}, Puerto: {BACKEND_PORT}")
 
     try:
-        log_queue.put("[DEBUG] Iniciando waitress.serve()...")
+        if not IS_FROZEN:
+            log_queue.put("[DEBUG] Iniciando waitress.serve()...")
+
+        # _quiet=True silencia logs de Waitress siempre (incluso en desarrollo)
         serve(flask_app, host=BACKEND_HOST, port=BACKEND_PORT, threads=BACKEND_THREADS, _quiet=True)
-        log_queue.put("[DEBUG] Waitress terminó de ejecutarse")
+
+        if not IS_FROZEN:
+            log_queue.put("[DEBUG] Waitress terminó de ejecutarse")
     except Exception as e:
         log_queue.put(f"[ERROR] Waitress falló al arrancar: {str(e)}")
-        import traceback
-        log_queue.put(f"[ERROR] Traceback: {traceback.format_exc()}")
+        if not IS_FROZEN:
+            import traceback
+            log_queue.put(f"[ERROR] Traceback: {traceback.format_exc()}")
