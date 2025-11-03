@@ -24,7 +24,7 @@ wheels/
 *.egg
 
 # PyInstaller
-*.spec
+# *.spec  # Comentado: BotDidi.spec es necesario para compilar
 
 # Chrome Profile
 ChromeProfile/
@@ -32,6 +32,13 @@ DidiProfile/
 
 # Ejecutables compilados
 BotDidi_Ejecutable_v2.0/
+
+# Archivos de licencias de prueba
+licencias_*.txt
+
+# Backups
+*.backup
+*_OLD.*
 
 # Archivos de sistema
 .DS_Store
@@ -56,3 +63,7 @@ nul
 # Environment variables
 .env
 .env.local
+
+# Configuración local
+db_config.json
+.license_token
