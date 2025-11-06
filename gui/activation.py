@@ -23,7 +23,7 @@ class ActivationWindow:
 
         # Configurar ventana
         self.root.title("Bot Didi - Activación de Licencia")
-        self.root.geometry("500x600")
+        self.root.geometry("500x750")
         self.root.resizable(False, False)
 
         # Centrar ventana
@@ -69,7 +69,7 @@ class ActivationWindow:
         info_frame.pack(fill=tk.X, pady=(0, 20))
 
         info_maquina = obtener_info_maquina()
-        hardware_id = generar_hardware_id()
+        hardware_id, hw_componentes = generar_hardware_id()
 
         tk.Label(
             info_frame,
@@ -100,8 +100,61 @@ class ActivationWindow:
             anchor='w'
         ).pack(fill=tk.X, pady=2)
 
-        # Guardar hardware_id para usarlo después
+        # Separador
+        ttk.Separator(info_frame, orient='horizontal').pack(fill=tk.X, pady=5)
+
+        # Mostrar componentes individuales
+        tk.Label(
+            info_frame,
+            text="Componentes de Hardware:",
+            font=("Consolas", 8, "bold"),
+            anchor='w'
+        ).pack(fill=tk.X, pady=(5, 2))
+
+        tk.Label(
+            info_frame,
+            text=f"  MAC: {hw_componentes.get('mac_address', 'unknown')}",
+            font=("Consolas", 7),
+            fg="#555",
+            anchor='w'
+        ).pack(fill=tk.X, pady=1)
+
+        tk.Label(
+            info_frame,
+            text=f"  Hostname: {hw_componentes.get('hostname', 'unknown')}",
+            font=("Consolas", 7),
+            fg="#555",
+            anchor='w'
+        ).pack(fill=tk.X, pady=1)
+
+        tk.Label(
+            info_frame,
+            text=f"  OS: {hw_componentes.get('os_info', 'unknown')}",
+            font=("Consolas", 7),
+            fg="#555",
+            anchor='w'
+        ).pack(fill=tk.X, pady=1)
+
+        tk.Label(
+            info_frame,
+            text=f"  CPU: {hw_componentes.get('processor', 'unknown')}",
+            font=("Consolas", 7),
+            fg="#555",
+            anchor='w'
+        ).pack(fill=tk.X, pady=1)
+
+        mb_uuid = hw_componentes.get('motherboard_uuid', 'unknown')
+        tk.Label(
+            info_frame,
+            text=f"  MB UUID: {mb_uuid[:30]}..." if len(mb_uuid) > 30 else f"  MB UUID: {mb_uuid}",
+            font=("Consolas", 7),
+            fg="#555",
+            anchor='w'
+        ).pack(fill=tk.X, pady=1)
+
+        # Guardar hardware_id y componentes para usarlo después
         self.hardware_id = hardware_id
+        self.hw_componentes = hw_componentes
         self.info_maquina = info_maquina
 
         # Instrucciones
@@ -281,7 +334,8 @@ class ActivationWindow:
                     'clave': clave_input,
                     'hardware_id': self.hardware_id,
                     'nombre_maquina': self.info_maquina['nombre_maquina'],
-                    'usuario_sistema': self.info_maquina['usuario_sistema']
+                    'usuario_sistema': self.info_maquina['usuario_sistema'],
+                    'hw_componentes': self.hw_componentes
                 },
                 timeout=10
             )

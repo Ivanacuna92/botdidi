@@ -23,8 +23,11 @@ def generar_hardware_id():
     """
     Genera un ID único basado en el hardware de la máquina
     Este ID es SIEMPRE EL MISMO para la misma máquina física
+
+    Retorna: (hardware_id, componentes_dict)
     """
     componentes = []
+    componentes_dict = {}
 
     # 1. MAC Address de la interfaz de red (determinístico)
     try:
@@ -32,31 +35,40 @@ def generar_hardware_id():
         mac_hex = ':'.join(['{:02x}'.format((mac >> elements) & 0xff)
                            for elements in range(0, 2*6, 2)][::-1])
         componentes.append(f"MAC:{mac_hex}")
+        componentes_dict['mac_address'] = mac_hex
     except:
         componentes.append("MAC:unknown")
+        componentes_dict['mac_address'] = "unknown"
 
     # 2. Nombre de la máquina (determinístico)
     try:
         hostname = platform.node()
         componentes.append(f"HOST:{hostname}")
+        componentes_dict['hostname'] = hostname
     except:
         componentes.append("HOST:unknown")
+        componentes_dict['hostname'] = "unknown"
 
     # 3. Información del sistema operativo (determinístico)
     try:
         sistema = f"{platform.system()}-{platform.release()}"
         componentes.append(f"OS:{sistema}")
+        componentes_dict['os_info'] = sistema
     except:
         componentes.append("OS:unknown")
+        componentes_dict['os_info'] = "unknown"
 
     # 4. Arquitectura del procesador (determinístico)
     try:
         procesador = platform.machine()
         componentes.append(f"PROC:{procesador}")
+        componentes_dict['processor'] = procesador
     except:
         componentes.append("PROC:unknown")
+        componentes_dict['processor'] = "unknown"
 
     # 5. ID de la máquina de Windows (si está disponible)
+    motherboard_uuid = None
     try:
         import subprocess
         # En Windows, usar wmic para obtener UUID del motherboard
@@ -66,8 +78,11 @@ def generar_hardware_id():
             uuid_str = result.stdout.strip().split('\n')[-1].strip()
             if uuid_str and uuid_str != 'UUID':
                 componentes.append(f"WMIC:{uuid_str}")
+                motherboard_uuid = uuid_str
     except:
         pass
+
+    componentes_dict['motherboard_uuid'] = motherboard_uuid if motherboard_uuid else "unknown"
 
     # Combinar todos los componentes (siempre en el mismo orden)
     data = "|".join(componentes)
@@ -79,7 +94,7 @@ def generar_hardware_id():
     # Formatear como HW-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX
     formatted = f"HW-{hardware_hash[:8]}-{hardware_hash[8:16]}-{hardware_hash[16:24]}-{hardware_hash[24:32]}"
 
-    return formatted.upper()
+    return formatted.upper(), componentes_dict
 
 
 def obtener_info_maquina():
@@ -135,7 +150,7 @@ def obtener_clave_encriptacion():
     Genera una clave de encriptación basada en el hardware
     Así el token solo funciona en esta máquina específica
     """
-    hardware_id = generar_hardware_id()
+    hardware_id, _ = generar_hardware_id()
     # Crear clave Fernet válida basada en el hardware ID
     # Usar base64 para que sea compatible con Fernet
     import base64
@@ -207,7 +222,7 @@ def leer_token_local():
             return None
 
         # Verificar que el hardware ID coincida
-        hardware_actual = generar_hardware_id()
+        hardware_actual, _ = generar_hardware_id()
         if token_data['hardware_id'] != hardware_actual:
             print("Token no corresponde a esta máquina")
             return None
@@ -261,8 +276,11 @@ if __name__ == "__main__":
 
     # Test Hardware ID
     print("\n1. Hardware ID de esta máquina:")
-    hw_id = generar_hardware_id()
+    hw_id, componentes = generar_hardware_id()
     print(f"   {hw_id}")
+    print("\n   Componentes:")
+    for k, v in componentes.items():
+        print(f"   - {k}: {v}")
 
     # Test Info de máquina
     print("\n2. Información de la máquina:")

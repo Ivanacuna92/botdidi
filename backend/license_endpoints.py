@@ -41,6 +41,7 @@ def registrar_endpoints_licencias(app):
             hardware_id = data.get('hardware_id', '').strip()
             nombre_maquina = data.get('nombre_maquina', '')
             usuario_sistema = data.get('usuario_sistema', '')
+            hw_componentes = data.get('hw_componentes', {})
             ip_address = request.remote_addr
 
             # Validar formato de la clave
@@ -91,12 +92,25 @@ def registrar_endpoints_licencias(app):
             if licencia['activada']:
                 # Verificar si es la misma máquina
                 if licencia['hardware_id'] == hardware_id:
-                    # Misma máquina - actualizar última validación
+                    # Misma máquina - actualizar última validación y componentes
                     cursor.execute("""
                         UPDATE licencias
-                        SET ultima_validacion = NOW()
+                        SET ultima_validacion = NOW(),
+                            hw_mac_address = %s,
+                            hw_hostname = %s,
+                            hw_os_info = %s,
+                            hw_processor = %s,
+                            hw_motherboard_uuid = %s,
+                            hw_components_updated_at = NOW()
                         WHERE id = %s
-                    """, (licencia['id'],))
+                    """, (
+                        hw_componentes.get('mac_address'),
+                        hw_componentes.get('hostname'),
+                        hw_componentes.get('os_info'),
+                        hw_componentes.get('processor'),
+                        hw_componentes.get('motherboard_uuid'),
+                        licencia['id']
+                    ))
                     conn.commit()
 
                     # Registrar en log
@@ -145,9 +159,26 @@ def registrar_endpoints_licencias(app):
                     usuario_sistema = %s,
                     fecha_activacion = NOW(),
                     ultima_validacion = NOW(),
-                    ip_activacion = %s
+                    ip_activacion = %s,
+                    hw_mac_address = %s,
+                    hw_hostname = %s,
+                    hw_os_info = %s,
+                    hw_processor = %s,
+                    hw_motherboard_uuid = %s,
+                    hw_components_updated_at = NOW()
                 WHERE id = %s
-            """, (hardware_id, nombre_maquina, usuario_sistema, ip_address, licencia['id']))
+            """, (
+                hardware_id,
+                nombre_maquina,
+                usuario_sistema,
+                ip_address,
+                hw_componentes.get('mac_address'),
+                hw_componentes.get('hostname'),
+                hw_componentes.get('os_info'),
+                hw_componentes.get('processor'),
+                hw_componentes.get('motherboard_uuid'),
+                licencia['id']
+            ))
 
             conn.commit()
 
