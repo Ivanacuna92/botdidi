@@ -195,3 +195,22 @@ class Sesion:
         conn.commit()
         cursor.close()
         conn.close()
+
+    @staticmethod
+    def invalidar_todas_del_usuario(user_id):
+        """Invalida todas las sesiones activas de un usuario"""
+        conn = pymysql.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE sesiones
+            SET activa = FALSE
+            WHERE user_id = %s AND activa = TRUE
+        """, (user_id,))
+
+        filas_afectadas = cursor.rowcount
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return filas_afectadas

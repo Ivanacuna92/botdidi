@@ -10,7 +10,7 @@ import logging
 
 from config.settings import DB_CONFIG, BACKEND_HOST, BACKEND_PORT, BACKEND_THREADS, log_queue
 from config.paths import IS_FROZEN
-from backend.models import Usuario
+from backend.models import Usuario, Sesion
 from backend.auth_utils import (
     hash_password, verificar_password, generar_token,
     token_requerido, rol_requerido, invalidar_token
@@ -144,6 +144,11 @@ def iniciar_backend():
                     'status': 'error',
                     'message': 'Credenciales inválidas'
                 }), 401
+
+            # Invalidar todas las sesiones anteriores del usuario
+            sesiones_invalidadas = Sesion.invalidar_todas_del_usuario(usuario.id)
+            if sesiones_invalidadas > 0:
+                log_queue.put(f"[INFO] Se invalidaron {sesiones_invalidadas} sesión(es) anterior(es) del usuario {username}")
 
             # Actualizar último login
             usuario.actualizar_ultimo_login()
