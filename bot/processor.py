@@ -188,11 +188,18 @@ def procesar_registro(driver, indice_registro):
                 else:
                     log_queue.put(f"[!] No se pudo capturar cfrnid")
 
-            # Capturar Monto total del estado de cuenta (ignorando el icono)
+            # Capturar Monto según el tipo de recorrido
             try:
-                elemento_monto = driver.find_element(By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Monto total del estado de cuenta')]/following-sibling::span[@class='el-descriptions-item__content']")
-                monto_total = elemento_monto.text.strip()
-                log_queue.put(f"[OK] ✓ Monto total capturado: {monto_total}")
+                if settings.tipo_recorrido_actual == 'Loan':
+                    # Para Loan: "Monto pendiente total"
+                    elemento_monto = driver.find_element(By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Monto pendiente total')]/following-sibling::span[@class='el-descriptions-item__content']")
+                    monto_total = elemento_monto.text.strip()
+                    log_queue.put(f"[OK] ✓ Monto pendiente total capturado: {monto_total}")
+                else:
+                    # Para CreditCard: "Monto total del estado de cuenta"
+                    elemento_monto = driver.find_element(By.XPATH, "//span[@class='el-descriptions-item__label has-colon ' and contains(text(), 'Monto total del estado de cuenta')]/following-sibling::span[@class='el-descriptions-item__content']")
+                    monto_total = elemento_monto.text.strip()
+                    log_queue.put(f"[OK] ✓ Monto total capturado: {monto_total}")
             except Exception as e:
                 error_msg = str(e).lower()
                 if "no such element" in error_msg:
@@ -228,7 +235,7 @@ def procesar_registro(driver, indice_registro):
             log_queue.put("[!] Bot detenido por el usuario")
             return False, nombre_cliente
 
-        # Plantilla
+        # Plantilla - usar check-template80 para ambos flujos
         boton_plantilla = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//button[contains(@class, 'check-template80')]"))
         )
@@ -240,17 +247,44 @@ def procesar_registro(driver, indice_registro):
             driver.execute_script("arguments[0].click();", boton_plantilla)
         time.sleep(2)
 
-        # Enviar
-        contenido_plantilla = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content')]"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
-        time.sleep(0.5)
-        try:
-            contenido_plantilla.click()
-        except:
-            driver.execute_script("arguments[0].click();", contenido_plantilla)
-        time.sleep(1.5)
+        if settings.tipo_recorrido_actual == 'Loan':
+            # Para Loan: click en carpeta "S0 No contacto"
+            log_queue.put("[*] Buscando carpeta 'S0 No contacto'...")
+            carpeta_s0 = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-folder')]//span[text()='S0 No contacto']"))
+            )
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", carpeta_s0)
+            time.sleep(0.5)
+            try:
+                carpeta_s0.click()
+            except:
+                driver.execute_script("arguments[0].click();", carpeta_s0)
+            time.sleep(2)
+
+            # Luego seleccionar la plantilla del préstamo (la que tiene {Amount})
+            log_queue.put("[*] Seleccionando plantilla de préstamo...")
+            contenido_plantilla = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content') and contains(., '{Amount}')]"))
+            )
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
+            time.sleep(0.5)
+            try:
+                contenido_plantilla.click()
+            except:
+                driver.execute_script("arguments[0].click();", contenido_plantilla)
+            time.sleep(1.5)
+        else:
+            # Para CreditCard: seleccionar contenido de plantilla directamente
+            contenido_plantilla = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content')]"))
+            )
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
+            time.sleep(0.5)
+            try:
+                contenido_plantilla.click()
+            except:
+                driver.execute_script("arguments[0].click();", contenido_plantilla)
+            time.sleep(1.5)
 
         botones = WebDriverWait(driver, 10).until(
             EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--medium')]"))
@@ -300,11 +334,23 @@ def procesar_registro(driver, indice_registro):
             log_queue.put("[!] Bot detenido por el usuario")
             return False, nombre_cliente
 
-        # Confirmar
+        # Confirmar - seleccionar radio button según tipo
         time.sleep(1)
-        radio_button = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//table//input[@type='radio']"))
+        radio_buttons = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.XPATH, "//table//input[@type='radio']"))
         )
+
+        if settings.tipo_recorrido_actual == 'Loan':
+            # Para Loan: seleccionar el segundo radio button
+            if len(radio_buttons) >= 2:
+                radio_button = radio_buttons[1]
+                log_queue.put("[*] Seleccionando segundo radio button (Loan)")
+            else:
+                radio_button = radio_buttons[0]
+        else:
+            # Para CreditCard: seleccionar el primero
+            radio_button = radio_buttons[0]
+
         driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", radio_button)
         time.sleep(0.5)
         try:

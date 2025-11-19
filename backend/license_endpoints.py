@@ -58,8 +58,9 @@ def registrar_endpoints_licencias(app):
                     'message': 'Hardware ID es requerido'
                 }), 400
 
-            # Conectar a base de datos
-            conn = pymysql.connect(**DB_CONFIG)
+            # Conectar a base de datos con timeout
+            db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+            conn = pymysql.connect(**db_config_with_timeout)
             cursor = conn.cursor(pymysql.cursors.DictCursor)
 
             # Buscar la licencia
@@ -237,8 +238,9 @@ def registrar_endpoints_licencias(app):
                     'message': 'Clave y hardware_id son requeridos'
                 }), 400
 
-            # Conectar a base de datos
-            conn = pymysql.connect(**DB_CONFIG)
+            # Conectar a base de datos con timeout
+            db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+            conn = pymysql.connect(**db_config_with_timeout)
             cursor = conn.cursor(pymysql.cursors.DictCursor)
 
             # Buscar la licencia
@@ -359,8 +361,9 @@ def registrar_endpoints_licencias(app):
                     'message': 'Parámetro clave es requerido'
                 }), 400
 
-            # Conectar a base de datos
-            conn = pymysql.connect(**DB_CONFIG)
+            # Conectar a base de datos con timeout
+            db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+            conn = pymysql.connect(**db_config_with_timeout)
             cursor = conn.cursor(pymysql.cursors.DictCursor)
 
             # Buscar la licencia

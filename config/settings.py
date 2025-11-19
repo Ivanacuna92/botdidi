@@ -13,6 +13,8 @@ import json
 from config.paths import (
     BASE_DIR,
     CHROME_PROFILE,
+    CHROME_PROFILES,
+    get_chrome_profile,
     DB_CONFIG_PATH,
     IS_FROZEN
 )
@@ -67,7 +69,15 @@ else:
 # ============================================================================
 
 DIDI_LOGIN_URL = "https://me.didiglobal.com/project/stargate-auth/html/login.html?redirect_uri=https%3A%2F%2Fmis-auth.didiglobal.com%2Fauth%3Fjumpto%3D%2F%26app_id%3D2054"
-DIDI_DASHBOARD_URL = "https://pixiu-prod.didiglobal.com/global-fintech/creditcard/mx/global-pixiu-api/home#/index"
+
+# URLs por tipo de recorrido
+DIDI_DASHBOARD_URLS = {
+    'CreditCard': "https://pixiu-prod.didiglobal.com/global-fintech/creditcard/mx/global-pixiu-api/home#/index",
+    'Loan': "https://pixiu-prod.didiglobal.com/global-fintech/loan/mx/global-pixiu-api/home#/index"
+}
+
+# URL por defecto (para compatibilidad con código antiguo)
+DIDI_DASHBOARD_URL = DIDI_DASHBOARD_URLS['CreditCard']
 
 # ============================================================================
 # CONFIGURACIÓN DE CHROME
@@ -99,6 +109,7 @@ bot_corriendo = False
 detener_bot = False
 flask_app = None
 driver_global = None
+tipo_recorrido_actual = 'CreditCard'  # Tipo de recorrido seleccionado en login
 
 # Colas para comunicación entre threads y GUI
 log_queue = queue.Queue()

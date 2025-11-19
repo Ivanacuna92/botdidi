@@ -38,7 +38,8 @@ def iniciar_backend():
             exitosos = data.get('exitosos', 0)
             errores = data.get('errores', 0)
 
-            conn = pymysql.connect(**DB_CONFIG)
+            db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+            conn = pymysql.connect(**db_config_with_timeout)
             cursor = conn.cursor()
 
             fecha_hoy = datetime.now().strftime('%Y-%m-%d')
@@ -82,7 +83,8 @@ def iniciar_backend():
             cfrnid = data.get('cfrnid', 'DESCONOCIDO')
             monto_total = data.get('monto_total', '0.00')
 
-            conn = pymysql.connect(**DB_CONFIG)
+            db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+            conn = pymysql.connect(**db_config_with_timeout)
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -112,20 +114,24 @@ def iniciar_backend():
     def login():
         """Endpoint de login - valida credenciales y retorna token JWT"""
         try:
+            log_queue.put("[DEBUG] Login endpoint llamado")
             data = request.get_json()
             username = data.get('username')
             password = data.get('password')
 
             if not username or not password:
+                log_queue.put("[DEBUG] Login falló: datos incompletos")
                 return jsonify({
                     'status': 'error',
                     'message': 'Username y password son requeridos'
                 }), 400
 
             # Buscar usuario
+            log_queue.put(f"[DEBUG] Buscando usuario: {username}")
             usuario = Usuario.obtener_por_username(username)
 
             if usuario is None:
+                log_queue.put(f"[DEBUG] Usuario no encontrado: {username}")
                 return jsonify({
                     'status': 'error',
                     'message': 'Credenciales inválidas'
@@ -133,29 +139,36 @@ def iniciar_backend():
 
             # Verificar si el usuario está activo
             if not usuario.activo:
+                log_queue.put(f"[DEBUG] Usuario inactivo: {username}")
                 return jsonify({
                     'status': 'error',
                     'message': 'Usuario inactivo. Contacte al administrador.'
                 }), 401
 
             # Verificar contraseña
+            log_queue.put(f"[DEBUG] Verificando password para: {username}")
             if not verificar_password(password, usuario.password_hash):
+                log_queue.put(f"[DEBUG] Password incorrecta para: {username}")
                 return jsonify({
                     'status': 'error',
                     'message': 'Credenciales inválidas'
                 }), 401
 
             # Invalidar todas las sesiones anteriores del usuario
+            log_queue.put(f"[DEBUG] Invalidando sesiones anteriores de: {username}")
             sesiones_invalidadas = Sesion.invalidar_todas_del_usuario(usuario.id)
             if sesiones_invalidadas > 0:
                 log_queue.put(f"[INFO] Se invalidaron {sesiones_invalidadas} sesión(es) anterior(es) del usuario {username}")
 
             # Actualizar último login
+            log_queue.put(f"[DEBUG] Actualizando último login de: {username}")
             usuario.actualizar_ultimo_login()
 
             # Generar token JWT
+            log_queue.put(f"[DEBUG] Generando token para: {username}")
             token = generar_token(usuario.id, usuario.username, usuario.rol)
 
+            log_queue.put(f"[OK] Login exitoso para: {username}")
             return jsonify({
                 'status': 'ok',
                 'message': 'Login exitoso',
@@ -163,9 +176,20 @@ def iniciar_backend():
                 'usuario': usuario.to_dict()
             }), 200
 
+        except pymysql.OperationalError as e:
+            log_queue.put(f"[ERROR] Error de conexión a BD en login: {str(e)}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Error de conexión a la base de datos. Intente nuevamente.'
+            }), 500
         except Exception as e:
             log_queue.put(f"[ERROR] Error en login: {str(e)}")
-            return jsonify({'status': 'error', 'message': str(e)}), 500
+            import traceback
+            log_queue.put(f"[ERROR] Traceback: {traceback.format_exc()}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Error interno del servidor. Contacte al administrador.'
+            }), 500
 
     @flask_app.route('/auth/register', methods=['POST'])
     @token_requerido
@@ -262,7 +286,8 @@ def iniciar_backend():
     def estadisticas():
         try:
             dias = int(request.args.get('dias', 7))
-            conn = pymysql.connect(**DB_CONFIG)
+            db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+            conn = pymysql.connect(**db_config_with_timeout)
             cursor = conn.cursor(pymysql.cursors.DictCursor)
 
             cursor.execute("""
@@ -283,7 +308,8 @@ def iniciar_backend():
     @flask_app.route('/clientes_hoy', methods=['GET'])
     def clientes_hoy():
         try:
-            conn = pymysql.connect(**DB_CONFIG)
+            db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+            conn = pymysql.connect(**db_config_with_timeout)
             cursor = conn.cursor(pymysql.cursors.DictCursor)
 
             fecha_hoy = datetime.now().strftime('%Y-%m-%d')

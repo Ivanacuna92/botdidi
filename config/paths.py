@@ -57,8 +57,19 @@ else:
 # RUTAS ESPECÍFICAS
 # ============================================================================
 
-# Perfil de Chrome (debe persistir entre ejecuciones)
-CHROME_PROFILE = os.path.join(BASE_DIR, 'DidiProfile')
+# Perfiles de Chrome separados por tipo de recorrido (debe persistir entre ejecuciones)
+CHROME_PROFILES = {
+    'CreditCard': os.path.join(BASE_DIR, 'DidiProfile_CreditCard'),
+    'Loan': os.path.join(BASE_DIR, 'DidiProfile_Loan')
+}
+
+# Perfil por defecto (para compatibilidad)
+CHROME_PROFILE = CHROME_PROFILES['CreditCard']
+
+
+def get_chrome_profile(tipo_recorrido):
+    """Obtiene la ruta del perfil de Chrome según el tipo de recorrido"""
+    return CHROME_PROFILES.get(tipo_recorrido, CHROME_PROFILES['CreditCard'])
 
 # Token de licencia (debe persistir)
 TOKEN_PATH = os.path.join(BASE_DIR, '.license_token')
@@ -80,6 +91,8 @@ __all__ = [
     'BASE_DIR',
     'TEMP_DIR',
     'CHROME_PROFILE',
+    'CHROME_PROFILES',
+    'get_chrome_profile',
     'TOKEN_PATH',
     'DB_CONFIG_PATH',
     'CHROMEDRIVER_PATH'

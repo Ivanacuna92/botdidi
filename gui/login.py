@@ -17,7 +17,7 @@ class LoginWindow:
 
         # Configurar ventana
         self.root.title("Bot Didi - Login")
-        self.root.geometry("400x500")
+        self.root.geometry("400x580")
         self.root.resizable(False, False)
 
         # Centrar ventana
@@ -93,7 +93,26 @@ class LoginWindow:
             variable=self.mostrar_password_var,
             command=self.toggle_password
         )
-        mostrar_check.pack(anchor=tk.W, pady=(0, 30))
+        mostrar_check.pack(anchor=tk.W, pady=(0, 20))
+
+        # Tipo de recorrido
+        tk.Label(
+            form_frame,
+            text="Tipo de Recorrido:",
+            font=("Arial", 10, "bold"),
+            fg="#2C3E50"
+        ).pack(anchor=tk.W, pady=(0, 5))
+
+        self.tipo_recorrido_var = tk.StringVar(value="CreditCard")
+        tipo_combo = ttk.Combobox(
+            form_frame,
+            textvariable=self.tipo_recorrido_var,
+            values=["CreditCard", "Loan"],
+            state="readonly",
+            font=("Arial", 11)
+        )
+        tipo_combo.pack(fill=tk.X, pady=(0, 30), ipady=5)
+        tipo_combo.current(0)
 
         # Botón de login
         self.btn_login = tk.Button(
@@ -175,11 +194,11 @@ class LoginWindow:
         self.root.update()
 
         try:
-            # Hacer petición de login
+            # Hacer petición de login (timeout aumentado a 15 segundos)
             response = requests.post(
                 'http://localhost:5000/auth/login',
                 json={'username': username, 'password': password},
-                timeout=5
+                timeout=15
             )
 
             data = response.json()
@@ -188,15 +207,16 @@ class LoginWindow:
                 # Login exitoso
                 self.token = data['token']
                 self.usuario = data['usuario']
+                tipo_recorrido = self.tipo_recorrido_var.get()
 
                 messagebox.showinfo(
                     "Exito",
-                    f"Bienvenido, {self.usuario.get('nombre_completo', username)}!"
+                    f"Bienvenido, {self.usuario.get('nombre_completo', username)}!\nTipo: {tipo_recorrido}"
                 )
 
                 # Cerrar ventana de login y continuar
                 self.root.destroy()
-                self.on_login_success(self.token, self.usuario)
+                self.on_login_success(self.token, self.usuario, tipo_recorrido)
 
             else:
                 # Error de login

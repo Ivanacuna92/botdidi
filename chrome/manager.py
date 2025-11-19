@@ -11,12 +11,13 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
 from config.settings import (
-    CHROME_PROFILE,
     CHROME_DEBUG_PORT,
     CHROME_PATHS,
     DIDI_LOGIN_URL,
-    log_queue
+    log_queue,
+    get_chrome_profile
 )
+import config.settings as settings
 from config.paths import CHROMEDRIVER_PATH, IS_FROZEN
 
 
@@ -54,19 +55,26 @@ def reiniciar_chrome_limpio():
 
 def abrir_chrome_con_perfil():
     """Abre Chrome con perfil persistente y debugging (solo si no está abierto)"""
+    # Obtener perfil según tipo de recorrido actual
+    chrome_profile = get_chrome_profile(settings.tipo_recorrido_actual)
+    log_queue.put(f"[*] Usando perfil: {settings.tipo_recorrido_actual}")
+
     # Verificar si Chrome ya está corriendo en el puerto 9222
     try:
         response = requests.get(f'http://localhost:{CHROME_DEBUG_PORT}/json/version', timeout=2)
         if response.status_code == 200:
-            log_queue.put("[OK] Chrome ya está abierto, usando la ventana existente")
-            return
+            # Chrome está abierto, pero necesitamos verificar si es el perfil correcto
+            # Por seguridad, cerramos y reabrimos con el perfil correcto
+            log_queue.put("[!] Chrome detectado en puerto 9222, cerrando para usar perfil correcto...")
+            cerrar_chrome_existente()
+            time.sleep(2)
     except:
         pass
 
     # Si no está abierto, abrirlo
-    log_queue.put("[*] Abriendo Chrome con perfil dedicado...")
+    log_queue.put(f"[*] Abriendo Chrome con perfil dedicado para {settings.tipo_recorrido_actual}...")
 
-    os.makedirs(CHROME_PROFILE, exist_ok=True)
+    os.makedirs(chrome_profile, exist_ok=True)
 
     chrome_exe = None
     for path in CHROME_PATHS:
@@ -79,13 +87,13 @@ def abrir_chrome_con_perfil():
 
     cmd = [
         chrome_exe,
-        f"--user-data-dir={CHROME_PROFILE}",
+        f"--user-data-dir={chrome_profile}",
         f"--remote-debugging-port={CHROME_DEBUG_PORT}",
         DIDI_LOGIN_URL
     ]
 
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    log_queue.put("[OK] Chrome abierto en pagina de login de Didi")
+    log_queue.put(f"[OK] Chrome abierto en pagina de login de Didi (Perfil: {settings.tipo_recorrido_actual})")
     time.sleep(5)
 
 

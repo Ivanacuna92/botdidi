@@ -22,11 +22,9 @@ from bot.main import ejecutar_bot
 from backend.flask_server import iniciar_backend
 from backend.license_utils import leer_token_local, generar_hardware_id
 
-
 # Variables globales
 token_global = None
-usuario_global = None
-clave_licencia_global = None
+usuario_global = Noneclave_licencia_global = None
 
 
 def iniciar_backend_startup():
@@ -67,10 +65,14 @@ def iniciar_backend_startup():
             if response.status_code == 200:
                 print("[OK] Backend iniciado correctamente")
                 return True
-        except:
+        except Exception as e:
             if intento < 4:
                 print(f"[*] Esperando backend... ({intento + 1}/5)")
+                print(f"[DEBUG] Error: {str(e)}")
                 time.sleep(2)
+            else:
+                print(f"[ERROR] Backend no responde después de {intento + 1} intentos")
+                print(f"[ERROR] Último error: {str(e)}")
 
     return False
 
@@ -101,11 +103,16 @@ def on_activation_exitosa(clave):
     mostrar_login(on_login_exitoso)
 
 
-def on_login_exitoso(token, usuario):
+def on_login_exitoso(token, usuario, tipo_recorrido):
     """Callback cuando el login es exitoso"""
     global token_global, usuario_global
     token_global = token
     usuario_global = usuario
+
+    # Almacenar el tipo de recorrido en settings
+    import config.settings as settings
+    settings.tipo_recorrido_actual = tipo_recorrido
+    print(f"[*] Tipo de recorrido seleccionado: {tipo_recorrido}")
 
     # Crear ventana principal del bot
     root = tk.Tk()

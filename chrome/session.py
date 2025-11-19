@@ -6,13 +6,16 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from config.settings import DIDI_DASHBOARD_URL, log_queue
+from config.settings import DIDI_DASHBOARD_URLS, tipo_recorrido_actual, log_queue
+import config.settings as settings
 
 
 def verificar_sesion_didi(driver):
     """Verifica si el usuario está logueado y en la URL correcta"""
     try:
-        url_esperada = DIDI_DASHBOARD_URL
+        # Obtener URL según el tipo de recorrido seleccionado
+        url_esperada = DIDI_DASHBOARD_URLS.get(settings.tipo_recorrido_actual, DIDI_DASHBOARD_URLS['CreditCard'])
+        log_queue.put(f"[*] Tipo de recorrido: {settings.tipo_recorrido_actual}")
 
         # Intentar obtener URL actual
         url_actual = None

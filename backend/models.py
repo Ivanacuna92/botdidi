@@ -25,7 +25,9 @@ class Usuario:
     @staticmethod
     def obtener_por_username(username):
         """Obtiene un usuario por su username"""
-        conn = pymysql.connect(**DB_CONFIG)
+        # Agregar timeout de conexión
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
         cursor.execute("""
@@ -46,7 +48,8 @@ class Usuario:
     @staticmethod
     def obtener_por_id(user_id):
         """Obtiene un usuario por su ID"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
         cursor.execute("""
@@ -67,7 +70,8 @@ class Usuario:
     @staticmethod
     def crear(username, email, password_hash, nombre_completo=None, rol='operador'):
         """Crea un nuevo usuario en la base de datos"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor()
 
         try:
@@ -90,7 +94,8 @@ class Usuario:
 
     def actualizar_ultimo_login(self):
         """Actualiza la fecha de último login del usuario"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -106,7 +111,8 @@ class Usuario:
     @staticmethod
     def listar_todos():
         """Lista todos los usuarios del sistema"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
         cursor.execute("""
@@ -142,7 +148,8 @@ class Sesion:
     @staticmethod
     def crear(user_id, token_hash, fecha_expiracion):
         """Crea una nueva sesión"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -160,7 +167,8 @@ class Sesion:
     @staticmethod
     def validar(token_hash):
         """Valida si una sesión es activa y no ha expirado"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
         cursor.execute("""
@@ -183,7 +191,8 @@ class Sesion:
     @staticmethod
     def invalidar(token_hash):
         """Invalida una sesión (logout)"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -199,7 +208,8 @@ class Sesion:
     @staticmethod
     def invalidar_todas_del_usuario(user_id):
         """Invalida todas las sesiones activas de un usuario"""
-        conn = pymysql.connect(**DB_CONFIG)
+        db_config_with_timeout = {**DB_CONFIG, 'connect_timeout': 5}
+        conn = pymysql.connect(**db_config_with_timeout)
         cursor = conn.cursor()
 
         cursor.execute("""
