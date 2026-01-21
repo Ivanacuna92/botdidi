@@ -309,6 +309,71 @@ def procesar_registro(driver, indice_registro):
             log_queue.put("[!] Bot detenido por el usuario")
             return False, nombre_cliente
 
+        # SMS
+        log_queue.put("[*] Clickeando botón SMS...")
+        boton_sms = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//button[contains(@class, 'el-button--mini') and .//span[contains(text(), 'SMS')]]"))
+        )
+        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_sms)
+        time.sleep(0.5)
+        try:
+            boton_sms.click()
+        except:
+            driver.execute_script("arguments[0].click();", boton_sms)
+        time.sleep(2)
+
+        # Seleccionar plantilla de SMS
+        log_queue.put("[*] Seleccionando plantilla de SMS...")
+        dropdown_plantilla_sms = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Seleccionar plantilla de comunicación']"))
+        )
+        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", dropdown_plantilla_sms)
+        time.sleep(0.5)
+        try:
+            dropdown_plantilla_sms.click()
+        except:
+            driver.execute_script("arguments[0].click();", dropdown_plantilla_sms)
+        time.sleep(1)
+
+        # Seleccionar opción de la plantilla
+        opcion_plantilla = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//li[contains(@class, 'el-select-dropdown__item') and contains(., 'MXCC_CM4_sms_Requerimiento Año Nuevo_001')]"))
+        )
+        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", opcion_plantilla)
+        time.sleep(0.5)
+        try:
+            opcion_plantilla.click()
+        except:
+            driver.execute_script("arguments[0].click();", opcion_plantilla)
+        time.sleep(1.5)
+
+        # Confirmar SMS
+        log_queue.put("[*] Confirmando envío de SMS...")
+        botones_confirmar_sms = WebDriverWait(driver, 10).until(
+            EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--medium')]"))
+        )
+        boton_confirmar_sms = None
+        for boton in botones_confirmar_sms:
+            if "Confirmar" in boton.text:
+                boton_confirmar_sms = boton
+                break
+
+        if boton_confirmar_sms:
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_confirmar_sms)
+            time.sleep(0.5)
+            try:
+                boton_confirmar_sms.click()
+            except:
+                driver.execute_script("arguments[0].click();", boton_confirmar_sms)
+            time.sleep(2)
+
+        log_queue.put("[OK] SMS enviado correctamente")
+
+        # Verificar si se debe detener
+        if settings.detener_bot:
+            log_queue.put("[!] Bot detenido por el usuario")
+            return False, nombre_cliente
+
         # Código del pago
         time.sleep(2)
         botones = WebDriverWait(driver, 10).until(
