@@ -322,8 +322,13 @@ def procesar_registro(driver, indice_registro):
             driver.execute_script("arguments[0].click();", boton_sms)
         time.sleep(2)
 
-        # Seleccionar plantilla de SMS
-        log_queue.put("[*] Seleccionando plantilla de SMS...")
+        # Seleccionar plantilla de SMS según tipo de recorrido
+        if settings.tipo_recorrido_actual == 'Loan':
+            plantilla_sms = 'MXCL_M5-6_sms_Promesa Rota Febrero_001'
+        else:
+            plantilla_sms = 'MXCC_CM5_sms_Seguimiento Febrero_001'
+
+        log_queue.put(f"[*] Seleccionando plantilla de SMS: {plantilla_sms}")
         dropdown_plantilla_sms = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Seleccionar plantilla de comunicación']"))
         )
@@ -337,7 +342,7 @@ def procesar_registro(driver, indice_registro):
 
         # Seleccionar opción de la plantilla
         opcion_plantilla = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//li[contains(@class, 'el-select-dropdown__item') and contains(., 'MXCC_CM4_sms_Requerimiento Año Nuevo_001')]"))
+            EC.presence_of_element_located((By.XPATH, f"//li[contains(@class, 'el-select-dropdown__item') and contains(., '{plantilla_sms}')]"))
         )
         driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", opcion_plantilla)
         time.sleep(0.5)
