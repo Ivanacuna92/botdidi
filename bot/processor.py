@@ -248,23 +248,10 @@ def procesar_registro(driver, indice_registro):
         time.sleep(2)
 
         if settings.tipo_recorrido_actual == 'Loan':
-            # Para Loan: click en carpeta "S0 No contacto"
-            log_queue.put("[*] Buscando carpeta 'S0 No contacto'...")
-            carpeta_s0 = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-folder')]//span[text()='S0 No contacto']"))
-            )
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", carpeta_s0)
-            time.sleep(0.5)
-            try:
-                carpeta_s0.click()
-            except:
-                driver.execute_script("arguments[0].click();", carpeta_s0)
-            time.sleep(2)
-
-            # Luego seleccionar la plantilla del préstamo (la que tiene {Amount})
-            log_queue.put("[*] Seleccionando plantilla de préstamo...")
+            # Para Loan: buscar plantilla por título
+            log_queue.put("[*] Buscando plantilla 'MXCL_M2_wa_Acuerdo Marzo_001'...")
             contenido_plantilla = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content') and contains(., '{Amount}')]"))
+                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content') and contains(., 'MXCL_M2_wa_Acuerdo Marzo_001')]"))
             )
             driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
             time.sleep(0.5)
@@ -326,7 +313,7 @@ def procesar_registro(driver, indice_registro):
         if settings.tipo_recorrido_actual == 'Loan':
             plantilla_sms = 'MXCL_M5-6_sms_Promesa Rota Febrero_001'
         else:
-            plantilla_sms = 'MXCC_CM5_sms_Seguimiento Febrero_001'
+            plantilla_sms = 'MXCC_CM2_sms_Seguimiento Marzo_001'
 
         log_queue.put(f"[*] Seleccionando plantilla de SMS: {plantilla_sms}")
         dropdown_plantilla_sms = WebDriverWait(driver, 10).until(
