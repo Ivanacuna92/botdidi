@@ -5,9 +5,120 @@ import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 
 import config.settings as settings
 from config.settings import log_queue
+
+
+def seleccionar_carpeta_wa(driver, plantilla_wa, log_queue):
+    """Navega el carrusel de carpetas WhatsApp y selecciona la plantilla correcta"""
+
+    def get_active_text():
+        return driver.execute_script(
+            "var a=document.querySelector('.wa-folder.folder-active');"
+            "return a?a.textContent.trim():'';"
+        )
+
+    def is_target_active():
+        return plantilla_wa in get_active_text()
+
+    def real_click(element):
+        """Click real via ActionChains (isTrusted=true), con fallbacks"""
+        try:
+            ActionChains(driver).move_to_element(element).pause(0.15).click().perform()
+            return
+        except Exception:
+            pass
+        try:
+            element.click()
+            return
+        except Exception:
+            pass
+        driver.execute_script("arguments[0].click();", element)
+
+    def find_target():
+        try:
+            return driver.find_element(
+                By.XPATH,
+                f"//div[contains(@class, 'wa-folder') and contains(., '{plantilla_wa}')]"
+            )
+        except Exception:
+            return None
+
+    # Esperar a que las carpetas aparezcan
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, '.wa-folder'))
+    )
+    time.sleep(0.5)
+
+    carpeta = find_target()
+    if not carpeta:
+        log_queue.put(f"[!] Plantilla '{plantilla_wa}' no existe en el DOM")
+        return
+
+    # --- Estrategia 1: scrollIntoView + click real ---
+    driver.execute_script(
+        "arguments[0].scrollIntoView({inline:'center',block:'nearest'});", carpeta)
+    time.sleep(0.3)
+    real_click(carpeta)
+    time.sleep(0.8)
+
+    if is_target_active():
+        log_queue.put(f"[OK] Plantilla '{plantilla_wa}' seleccionada (click directo)")
+        return
+
+    log_queue.put("[DEBUG] Click directo no activo la carpeta, navegando con flechas...")
+
+    # --- Estrategia 2: Navegar con flechas usando clicks reales ---
+    arrows = {}
+    for direction, icon_css in [('derecha', '.el-icon-caret-right'), ('izquierda', '.el-icon-caret-left')]:
+        try:
+            arrows[direction] = driver.find_element(
+                By.CSS_SELECTOR, f'.wa-folder-container {icon_css}')
+        except Exception:
+            pass
+
+    if not arrows:
+        log_queue.put("[!] No se encontraron flechas de navegacion")
+        return
+
+    for direction, icon in arrows.items():
+        prev_active = ''
+        stuck = 0
+
+        for i in range(30):
+            real_click(icon)
+            time.sleep(0.5)
+
+            carpeta = find_target()
+            if carpeta:
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({inline:'center',block:'nearest'});", carpeta)
+                time.sleep(0.2)
+                real_click(carpeta)
+                time.sleep(0.8)
+
+                if is_target_active():
+                    log_queue.put(f"[OK] Plantilla '{plantilla_wa}' seleccionada (flecha {direction} x{i+1})")
+                    return
+
+            curr = get_active_text()[:50]
+            log_queue.put(f"[DEBUG] Flecha {direction} {i+1}: active='{curr}'")
+
+            if curr == prev_active:
+                stuck += 1
+                if stuck >= 5:
+                    log_queue.put(f"[DEBUG] Carrusel atascado en flecha {direction}, cambiando...")
+                    break
+            else:
+                stuck = 0
+            prev_active = curr
+
+        if direction == 'derecha':
+            log_queue.put("[DEBUG] No se encontro con flecha derecha, intentando izquierda...")
+
+    log_queue.put(f"[!] No se pudo seleccionar '{plantilla_wa}' despues de navegar todo el carrusel")
 
 
 def cerrar_pestanas_detalles_abiertas(driver):
@@ -248,30 +359,25 @@ def procesar_registro(driver, indice_registro):
         time.sleep(2)
 
         if settings.tipo_recorrido_actual == 'Loan':
-            # Para Loan: buscar plantilla por título
-            log_queue.put("[*] Buscando plantilla 'MXCL_M2_wa_Acuerdo Marzo_001'...")
-            contenido_plantilla = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content') and contains(., 'MXCL_M2_wa_Acuerdo Marzo_001')]"))
-            )
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
-            time.sleep(0.5)
-            try:
-                contenido_plantilla.click()
-            except:
-                driver.execute_script("arguments[0].click();", contenido_plantilla)
-            time.sleep(1.5)
+            plantilla_wa = 'MXCL_M4_wa_Requerimiento Abril_01'
         else:
-            # Para CreditCard: seleccionar contenido de plantilla directamente
-            contenido_plantilla = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content')]"))
-            )
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
-            time.sleep(0.5)
-            try:
-                contenido_plantilla.click()
-            except:
-                driver.execute_script("arguments[0].click();", contenido_plantilla)
-            time.sleep(1.5)
+            plantilla_wa = 'MXCC_CM5_wa_Acuerdo Abril_01'
+
+        log_queue.put(f"[*] Buscando plantilla '{plantilla_wa}'...")
+        seleccionar_carpeta_wa(driver, plantilla_wa, log_queue)
+        time.sleep(1)
+
+        # Clickear el contenido de la plantilla
+        contenido_plantilla = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'wa-template-content')]"))
+        )
+        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", contenido_plantilla)
+        time.sleep(0.5)
+        try:
+            contenido_plantilla.click()
+        except:
+            driver.execute_script("arguments[0].click();", contenido_plantilla)
+        time.sleep(1.5)
 
         botones = WebDriverWait(driver, 10).until(
             EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--medium')]"))
@@ -311,9 +417,9 @@ def procesar_registro(driver, indice_registro):
 
         # Seleccionar plantilla de SMS según tipo de recorrido
         if settings.tipo_recorrido_actual == 'Loan':
-            plantilla_sms = 'MXCL_M5-6_sms_Promesa Rota Febrero_001'
+            plantilla_sms = 'MXCL_M5-6_sms_Seguimiento Abril_01'
         else:
-            plantilla_sms = 'MXCC_CM2_sms_Seguimiento Marzo_001'
+            plantilla_sms = 'MXCC_CM2_sms_Promesa Rota Abril_01'
 
         log_queue.put(f"[*] Seleccionando plantilla de SMS: {plantilla_sms}")
         dropdown_plantilla_sms = WebDriverWait(driver, 10).until(
@@ -327,16 +433,24 @@ def procesar_registro(driver, indice_registro):
             driver.execute_script("arguments[0].click();", dropdown_plantilla_sms)
         time.sleep(1)
 
-        # Seleccionar opción de la plantilla
+        # Seleccionar opción de la plantilla (scroll dentro del dropdown para opciones no visibles)
         opcion_plantilla = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, f"//li[contains(@class, 'el-select-dropdown__item') and contains(., '{plantilla_sms}')]"))
         )
-        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", opcion_plantilla)
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'nearest'});"
+            "var ul=arguments[0].closest('.el-scrollbar__view');"
+            "if(ul&&ul.parentElement)ul.parentElement.scrollTop=arguments[0].offsetTop-50;",
+            opcion_plantilla
+        )
         time.sleep(0.5)
         try:
-            opcion_plantilla.click()
-        except:
-            driver.execute_script("arguments[0].click();", opcion_plantilla)
+            ActionChains(driver).move_to_element(opcion_plantilla).pause(0.15).click().perform()
+        except Exception:
+            try:
+                opcion_plantilla.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();", opcion_plantilla)
         time.sleep(1.5)
 
         # Confirmar SMS
@@ -433,6 +547,134 @@ def procesar_registro(driver, indice_registro):
             except:
                 driver.execute_script("arguments[0].click();", boton_confirmar)
             time.sleep(2)
+
+        # Verificar si se debe detener
+        if settings.detener_bot:
+            log_queue.put("[!] Bot detenido por el usuario")
+            return False, nombre_cliente
+
+        # Informe de cobro
+        log_queue.put("[*] Clickeando botón 'Informe de cobro'...")
+        try:
+            botones_mini = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--mini')]"))
+            )
+            boton_informe = None
+            for boton in botones_mini:
+                if "Informe de cobro" in boton.text:
+                    boton_informe = boton
+                    break
+
+            if boton_informe:
+                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", boton_informe)
+                time.sleep(0.5)
+                try:
+                    boton_informe.click()
+                except:
+                    driver.execute_script("arguments[0].click();", boton_informe)
+                time.sleep(2)
+
+                # Llenar número del contacto con 000
+                log_queue.put("[*] Llenando número del contacto...")
+                input_numero = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Número del contacto']"))
+                )
+                input_numero.clear()
+                input_numero.send_keys("000")
+                time.sleep(0.5)
+                log_queue.put("[OK] Número del contacto: 000")
+
+                # Seleccionar relación con el contacto
+                log_queue.put("[*] Seleccionando relación con el contacto...")
+                dropdown_relacion = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Relación con el contacto']"))
+                )
+                try:
+                    dropdown_relacion.click()
+                except:
+                    driver.execute_script("arguments[0].click();", dropdown_relacion)
+                time.sleep(1)
+
+                opcion_solicitante = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//li[contains(@class, 'el-select-dropdown__item') and contains(., 'Solicitante del crédito')]"))
+                )
+                try:
+                    opcion_solicitante.click()
+                except:
+                    driver.execute_script("arguments[0].click();", opcion_solicitante)
+                time.sleep(0.5)
+                log_queue.put("[OK] Relación: Solicitante del crédito")
+
+                # Seleccionar ¿Se pudo conectar la llamada?
+                log_queue.put("[*] Seleccionando conexión de llamada...")
+                dropdown_llamada = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//input[@placeholder='¿Se pudo conectar la llamada?']"))
+                )
+                try:
+                    dropdown_llamada.click()
+                except:
+                    driver.execute_script("arguments[0].click();", dropdown_llamada)
+                time.sleep(1)
+
+                opcion_no_conectada = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//li[contains(@class, 'el-select-dropdown__item') and contains(., 'No conectada')]"))
+                )
+                try:
+                    opcion_no_conectada.click()
+                except:
+                    driver.execute_script("arguments[0].click();", opcion_no_conectada)
+                time.sleep(0.5)
+                log_queue.put("[OK] Llamada: No conectada")
+
+                # Clickear "Otro"
+                boton_otro = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//span[text()='Otro']"))
+                )
+                try:
+                    boton_otro.click()
+                except:
+                    driver.execute_script("arguments[0].click();", boton_otro)
+                time.sleep(0.5)
+                log_queue.put("[OK] Seleccionado: Otro")
+
+                # Llenar textarea junto al label "Nota"
+                textarea = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH,
+                        "//label[@for='remark']/following::textarea[1]"))
+                )
+                driver.execute_script("""
+                    var ta = arguments[0];
+                    var nativeSetter = Object.getOwnPropertyDescriptor(
+                        window.HTMLTextAreaElement.prototype, 'value').set;
+                    nativeSetter.call(ta, 'Se envió accionamiento');
+                    ta.dispatchEvent(new Event('input', {bubbles: true}));
+                    ta.dispatchEvent(new Event('change', {bubbles: true}));
+                """, textarea)
+                time.sleep(0.5)
+                log_queue.put("[OK] Comentario: Se envió accionamiento")
+
+                # Confirmar informe de cobro
+                botones_confirmar_informe = WebDriverWait(driver, 10).until(
+                    EC.presence_of_all_elements_located((By.XPATH, "//button[@type='button' and contains(@class, 'el-button--primary') and contains(@class, 'el-button--medium')]"))
+                )
+                boton_confirmar_informe = None
+                for boton in botones_confirmar_informe:
+                    if "Confirmar" in boton.text:
+                        boton_confirmar_informe = boton
+                        break
+
+                if boton_confirmar_informe:
+                    try:
+                        boton_confirmar_informe.click()
+                    except:
+                        driver.execute_script("arguments[0].click();", boton_confirmar_informe)
+                    time.sleep(2)
+
+                log_queue.put("[OK] Informe de cobro completado")
+            else:
+                log_queue.put("[!] No se encontró botón 'Informe de cobro'")
+        except Exception as e:
+            log_queue.put(f"[!] No se pudo clickear 'Informe de cobro'")
 
         # Cerrar pestaña
         try:

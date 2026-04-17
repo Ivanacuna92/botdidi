@@ -1,11 +1,13 @@
 """
 Configuración de autenticación y JWT
 """
+import os
 import secrets
 
-# Clave secreta para JWT (en producción debería estar en variable de entorno)
-# Esta clave se genera automáticamente, pero puedes cambiarla manualmente
-JWT_SECRET_KEY = secrets.token_hex(32)  # Genera una clave aleatoria de 64 caracteres
+# Clave secreta para JWT
+# En produccion: definir variable de entorno JWT_SECRET_KEY
+# Si no existe, genera una aleatoria (se pierde al reiniciar)
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or secrets.token_hex(32)
 
 # Tiempo de expiración del token (en horas)
 JWT_EXPIRATION_HOURS = 24

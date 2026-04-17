@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+    <!-- ============================================================ -->
+    <!-- VISTA DE ACTIVACION DE LICENCIA                               -->
+    <!-- ============================================================ -->
+    <div id="activation-view" style="display:none;">
+        <div class="header">
+            <h1>BOT DIDI</h1>
+            <p class="subtitle">Activacion de Licencia</p>
+        </div>
+
+        <div class="activation-info">
+            <p>Ingrese su clave de licencia para activar la extension.</p>
+        </div>
+
+        <div class="form-group">
+            <label for="license-key">Clave de Licencia</label>
+            <input type="text" id="license-key" placeholder="DIDI-XXXX-XXXX-XXXX" class="input-license" autocomplete="off" spellcheck="false">
+            <span class="input-hint">Formato: DIDI-XXXX-XXXX-XXXX</span>
+        </div>
+
+        <button id="btn-activate" class="btn btn-primary btn-full">ACTIVAR LICENCIA</button>
+        <p id="activation-error" class="error-text"></p>
+
+        <div class="activation-notes">
+            <p>Cada clave solo puede usarse en una instalacion.</p>
+            <p>Si no tiene una clave, contacte al administrador.</p>
+        </div>
+
+        <div class="footer-text">v1.0 - Extension de Chrome</div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VISTA DE LOGIN                                                -->
+    <!-- ============================================================ -->
+    <div id="login-view" style="display:none;">
+        <div class="header">
+            <h1>BOT DIDI</h1>
+            <p class="subtitle">Sistema de Automatizacion</p>
+        </div>
+
+        <div class="form-group">
+            <label for="username">Usuario</label>
+            <input type="text" id="username" placeholder="Tu usuario" autocomplete="username">
+        </div>
+
+        <div class="form-group">
+            <label for="password">Contrasena</label>
+            <input type="password" id="password" placeholder="Tu contrasena" autocomplete="current-password">
+        </div>
+
+        <button id="btn-login" class="btn btn-primary btn-full">INICIAR SESION</button>
+        <p id="login-error" class="error-text"></p>
+
+        <div class="footer-text">v1.0 - Extension de Chrome</div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VISTA PRINCIPAL                                               -->
+    <!-- ============================================================ -->
+    <div id="main-view" style="display:none;">
+        <div class="header compact">
+            <h1>BOT DIDI</h1>
+            <p id="user-info" class="subtitle"></p>
+        </div>
+
+        <!-- Tipo de recorrido -->
+        <div class="form-group">
+            <label for="tipo-recorrido">Tipo de Recorrido</label>
+            <select id="tipo-recorrido">
+                <option value="CreditCard">CreditCard</option>
+                <option value="Loan">Loan</option>
+            </select>
+        </div>
+
+        <!-- Plantillas -->
+        <div class="form-group">
+            <label for="plantilla-wa">Plantilla WhatsApp</label>
+            <input type="text" id="plantilla-wa" placeholder="Nombre de la plantilla WhatsApp" autocomplete="off" spellcheck="false">
+        </div>
+
+        <div class="form-group">
+            <label for="plantilla-sms">Plantilla SMS</label>
+            <input type="text" id="plantilla-sms" placeholder="Nombre de la plantilla SMS" autocomplete="off" spellcheck="false">
+        </div>
+
+        <!-- Controles -->
+        <div class="controls">
+            <button id="btn-start" class="btn btn-success">INICIAR</button>
+            <button id="btn-stop" class="btn btn-danger" disabled>DETENER</button>
+        </div>
+
+        <!-- Status -->
+        <div class="status-bar">
+            Estado: <span id="status" class="status-idle">LISTO</span>
+        </div>
+
+        <!-- Estadisticas -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <span class="stat-value" id="stat-total">0</span>
+                <span class="stat-label">Procesados</span>
+            </div>
+            <div class="stat-card success">
+                <span class="stat-value" id="stat-exitosos">0</span>
+                <span class="stat-label">Exitosos</span>
+            </div>
+            <div class="stat-card danger">
+                <span class="stat-value" id="stat-errores">0</span>
+                <span class="stat-label">Errores</span>
+            </div>
+            <div class="stat-card info">
+                <span class="stat-value" id="stat-pagina">0</span>
+                <span class="stat-label">Pagina</span>
+            </div>
+        </div>
+
+        <!-- Log -->
+        <div class="log-section">
+            <div class="log-header">Log de Actividad</div>
+            <div id="log" class="log-area"></div>
+        </div>
+
+        <!-- Botones inferiores -->
+        <div class="footer-actions">
+            <button id="btn-export" class="btn btn-small btn-secondary">Exportar CSV</button>
+            <button id="btn-logout" class="btn btn-small btn-outline">Cerrar Sesion</button>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
