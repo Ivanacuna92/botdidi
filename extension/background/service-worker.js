@@ -9,7 +9,7 @@
 
 // URL del servidor - HARDCODEADA para proteger el negocio
 // Cambiar a la URL de produccion cuando se despliegue
-const API_URL = 'http://localhost:5000';
+const API_URL = 'http://85.239.245.225:5005';
 
 function getApiUrl() {
     return API_URL;

@@ -1,0 +1,9 @@
+services:
+  backend:
+    build: .
+    container_name: botdidi-backend
+    ports:
+      - "5005:5005"
+    environment:
+      - JWT_SECRET_KEY=tu_clave_secreta_aqui_cambiar_esto
+    restart: unless-stopped
